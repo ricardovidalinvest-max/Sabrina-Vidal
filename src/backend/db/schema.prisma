@@ -1,0 +1,33 @@
+// Prisma Schema para o Backend de Agendamento Fail-Proof
+// Integrado com Cal.com, Asaas (Pix) e Z-API (WhatsApp)
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum BookingStatus {
+  PENDING
+  PAID
+  CANCELED
+}
+
+model Agendamentos {
+  id                String        @id @default(uuid()) @db.Uuid
+  calcom_booking_id String        @unique @db.VarChar(255)
+  asaas_payment_id  String?       @unique @db.VarChar(255)
+  status            BookingStatus @default(PENDING)
+  customer_name     String        @db.VarChar(255)
+  customer_email    String        @db.VarChar(255)
+  customer_phone    String        @db.VarChar(50)
+  created_at        DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime      @updatedAt @db.Timestamptz(6)
+
+  @@index([status, created_at], name: "idx_agendamentos_status_created")
+  @@index([asaas_payment_id], name: "idx_agendamentos_asaas_payment")
+  @@map("agendamentos")
+}

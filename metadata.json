@@ -1,0 +1,6 @@
+{
+  "name": "Drª Sabrina Vidal | Nutrição Social",
+  "description": "Página de vendas de alta conversão para Nutrição Social com agendamento online automático, PIX dinâmico e integração WhatsApp/E-mail.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

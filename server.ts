@@ -361,7 +361,7 @@ async function createAsaasPaymentAndPix(
 
 // 1. API: Integration Configuration & Status
 app.get('/api/config', (req: Request, res: Response) => {
-  const appUrl = process.env.APP_URL || `http://localhost:${PORT}`;
+  const appUrl = (process.env.APP_URL || getLiveConfig().appUrl || 'https://sabrinavidal.com.br').trim().replace(/\/$/, '');
   const asaasConfigured = hasRealAsaasKey();
   const calcomEventUrl = process.env.CALCOM_EVENT_URL || 'https://cal.com/sabrina-amorim-tkood0/agendamentos-de-consultas';
   const sabrinaEmail = process.env.SABRINA_NOTIFICATION_EMAIL || 'nutricionistasabrinaamorim@gmail.com';
@@ -375,12 +375,13 @@ app.get('/api/config', (req: Request, res: Response) => {
       apiKeyPreview: asaasApiKey
         ? `${asaasApiKey.substring(0, 8)}...${asaasApiKey.slice(-4)}`
         : null,
-      webhookUrl: `${appUrl}/api/asaas/webhook`,
+      webhookUrl: `${appUrl}/api/webhooks/asaas`,
       webhookToken: asaasWebhookToken,
       webhookTokenHeader: 'asaas-access-token',
     },
     calcom: {
       eventUrl: calcomEventUrl,
+      webhookUrl: `${appUrl}/api/webhooks/calcom`,
       configured: true,
       hasApiKey: Boolean(calcomApiKey && calcomApiKey.trim().length > 5),
       apiKeyPreview: calcomApiKey ? `${calcomApiKey.substring(0, 7)}...` : null,
@@ -1469,8 +1470,8 @@ app.post('/api/asaas/test-webhook-ping', (req: Request, res: Response) => {
   });
 });
 
-// Real Webhook Receiver for Asaas
-app.post('/api/asaas/webhook', async (req: Request, res: Response) => {
+// Real Webhook Receiver for Asaas (suporta tanto /api/asaas/webhook quanto /api/webhooks/asaas)
+app.post(['/api/asaas/webhook', '/api/webhooks/asaas'], async (req: Request, res: Response) => {
   try {
     const event = req.body.event; // e.g. "PAYMENT_RECEIVED", "PAYMENT_CONFIRMED"
     const paymentData = req.body.payment;
@@ -1624,9 +1625,10 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static(path.resolve(__dirname, 'dist')));
+    const distPath = path.resolve(process.cwd(), 'dist');
+    app.use(express.static(distPath));
     app.get('*', (req: Request, res: Response) => {
-      res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
+      res.sendFile(path.resolve(distPath, 'index.html'));
     });
   }
 

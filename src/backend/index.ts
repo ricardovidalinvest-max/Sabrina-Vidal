@@ -51,13 +51,13 @@ backendRouter.post('/api/backend/auth/login', (req: Request, res: Response) => {
 // 2. ENDPOINTS DE WEBHOOK PÚBLICOS (Cal.com & Asaas com validação por chave)
 // ==============================================================================
 backendRouter.post(
-  '/api/webhooks/calcom',
+  ['/api/webhooks/calcom', '/api/calcom/webhook'],
   validateCalcomSignature,
   handleCalcomWebhook
 );
 
 backendRouter.post(
-  '/api/webhooks/asaas',
+  ['/api/webhooks/asaas', '/api/asaas/webhook'],
   validateAsaasToken,
   handleAsaasWebhook
 );
@@ -73,8 +73,8 @@ const getBaseUrl = (req: Request): string => {
   if (envUrl && envUrl.startsWith('http')) {
     return envUrl.replace(/\/$/, '');
   }
-  const host = req.get('x-forwarded-host') || req.get('host') || 'localhost:3000';
-  let proto = req.get('x-forwarded-proto') || req.protocol || 'http';
+  const host = req.get('x-forwarded-host') || req.get('host') || 'sabrinavidal.com.br';
+  let proto = req.get('x-forwarded-proto') || req.protocol || 'https';
   // Se estiver em produção ou em domínio não-localhost, assegura https
   if (!host.includes('localhost') && !host.includes('127.0.0.1')) {
     proto = 'https';

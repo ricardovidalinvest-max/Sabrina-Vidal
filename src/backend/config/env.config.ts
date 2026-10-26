@@ -37,7 +37,7 @@ const currentConfig: BackendConfig = {
 
   consultationPriceBrl: Number(process.env.CONSULTATION_PRICE_BRL) || 79.0,
   pixExpirationMinutes: Number(process.env.PIX_EXPIRATION_MINUTES) || 15,
-  appUrl: process.env.APP_URL || '',
+  appUrl: process.env.APP_URL || 'https://sabrinavidal.com.br',
   adminPassword: process.env.ADMIN_PASSWORD || 'sabrina@admin2026',
 };
 

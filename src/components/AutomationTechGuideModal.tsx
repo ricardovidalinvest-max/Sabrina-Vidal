@@ -239,6 +239,9 @@ export const AutomationTechGuideModal: React.FC<TechGuideProps> = ({ isOpen, onC
         if (data.rawConfig?.zapiInstanceId) {
           setZapiInstanceInput(data.rawConfig.zapiInstanceId);
         }
+        if (data.rawConfig?.zapiToken) {
+          setZapiTokenInput(data.rawConfig.zapiToken);
+        }
         if (data.rawConfig?.zapiClientToken) {
           setZapiClientTokenInput(data.rawConfig.zapiClientToken);
         }

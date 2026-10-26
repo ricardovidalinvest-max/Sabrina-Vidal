@@ -93,6 +93,7 @@ backendRouter.get('/api/backend/config', requireAdminAuth, (req: Request, res: R
     rawConfig: {
       zapiInstanceId: live.zapiInstanceId,
       zapiClientToken: live.zapiClientToken,
+      zapiToken: live.zapiToken,
       hasZapiToken: Boolean(live.zapiToken && live.zapiToken.length > 5),
       appUrl: live.appUrl || '',
     },
@@ -346,9 +347,13 @@ backendRouter.post('/api/backend/config/test-calcom', requireAdminAuth, async (r
 backendRouter.post('/api/backend/config/test-zapi-status', requireAdminAuth, async (req: Request, res: Response) => {
   try {
     const live = getLiveConfig();
-    const instanceId = (req.body.instanceId || live.zapiInstanceId || '').trim();
-    const token = (req.body.token || live.zapiToken || '').trim();
-    const clientToken = (req.body.clientToken !== undefined ? req.body.clientToken : live.zapiClientToken || '').trim();
+    const instanceId = (req.body.instanceId || live.zapiInstanceId || process.env.ZAPI_INSTANCE_ID || '').trim();
+    const token = (req.body.token && String(req.body.token).trim().length > 0)
+      ? String(req.body.token).trim()
+      : (live.zapiToken || process.env.ZAPI_TOKEN || '').trim();
+    const clientToken = (req.body.clientToken !== undefined && String(req.body.clientToken).trim().length > 0)
+      ? String(req.body.clientToken).trim()
+      : (live.zapiClientToken || process.env.ZAPI_CLIENT_TOKEN || '').trim();
 
     if (!instanceId || !token) {
       return res.status(400).json({
@@ -357,7 +362,7 @@ backendRouter.post('/api/backend/config/test-zapi-status', requireAdminAuth, asy
       });
     }
 
-    // Salva temporariamente para manter sincronizado
+    // Salva mantendo sincronizado
     updateLiveConfig({ zapiInstanceId: instanceId, zapiToken: token, zapiClientToken: clientToken });
 
     const statusResult = await zapiService.checkStatus({ instanceId, token, clientToken });
@@ -371,9 +376,13 @@ backendRouter.post('/api/backend/config/test-zapi-status', requireAdminAuth, asy
 backendRouter.post('/api/backend/config/zapi-qrcode', requireAdminAuth, async (req: Request, res: Response) => {
   try {
     const live = getLiveConfig();
-    const instanceId = (req.body.instanceId || live.zapiInstanceId || '').trim();
-    const token = (req.body.token || live.zapiToken || '').trim();
-    const clientToken = (req.body.clientToken !== undefined ? req.body.clientToken : live.zapiClientToken || '').trim();
+    const instanceId = (req.body.instanceId || live.zapiInstanceId || process.env.ZAPI_INSTANCE_ID || '').trim();
+    const token = (req.body.token && String(req.body.token).trim().length > 0)
+      ? String(req.body.token).trim()
+      : (live.zapiToken || process.env.ZAPI_TOKEN || '').trim();
+    const clientToken = (req.body.clientToken !== undefined && String(req.body.clientToken).trim().length > 0)
+      ? String(req.body.clientToken).trim()
+      : (live.zapiClientToken || process.env.ZAPI_CLIENT_TOKEN || '').trim();
 
     if (!instanceId || !token) {
       return res.status(400).json({
@@ -393,9 +402,13 @@ backendRouter.post('/api/backend/config/zapi-qrcode', requireAdminAuth, async (r
 backendRouter.post('/api/backend/config/zapi-check-phone', requireAdminAuth, async (req: Request, res: Response) => {
   try {
     const live = getLiveConfig();
-    const instanceId = (req.body.instanceId || live.zapiInstanceId || '').trim();
-    const token = (req.body.token || live.zapiToken || '').trim();
-    const clientToken = (req.body.clientToken !== undefined ? req.body.clientToken : live.zapiClientToken || '').trim();
+    const instanceId = (req.body.instanceId || live.zapiInstanceId || process.env.ZAPI_INSTANCE_ID || '').trim();
+    const token = (req.body.token && String(req.body.token).trim().length > 0)
+      ? String(req.body.token).trim()
+      : (live.zapiToken || process.env.ZAPI_TOKEN || '').trim();
+    const clientToken = (req.body.clientToken !== undefined && String(req.body.clientToken).trim().length > 0)
+      ? String(req.body.clientToken).trim()
+      : (live.zapiClientToken || process.env.ZAPI_CLIENT_TOKEN || '').trim();
     const { phone } = req.body;
 
     if (!phone || String(phone).trim().length < 8) {
@@ -416,9 +429,13 @@ backendRouter.post('/api/backend/config/zapi-check-phone', requireAdminAuth, asy
 backendRouter.post('/api/backend/config/test-zapi', requireAdminAuth, async (req: Request, res: Response) => {
   try {
     const live = getLiveConfig();
-    const instanceId = (req.body.instanceId || live.zapiInstanceId || '').trim();
-    const token = (req.body.token || live.zapiToken || '').trim();
-    const clientToken = (req.body.clientToken !== undefined ? req.body.clientToken : live.zapiClientToken || '').trim();
+    const instanceId = (req.body.instanceId || live.zapiInstanceId || process.env.ZAPI_INSTANCE_ID || '').trim();
+    const token = (req.body.token && String(req.body.token).trim().length > 0)
+      ? String(req.body.token).trim()
+      : (live.zapiToken || process.env.ZAPI_TOKEN || '').trim();
+    const clientToken = (req.body.clientToken !== undefined && String(req.body.clientToken).trim().length > 0)
+      ? String(req.body.clientToken).trim()
+      : (live.zapiClientToken || process.env.ZAPI_CLIENT_TOKEN || '').trim();
     const { phone, testMessage } = req.body;
 
     if (!instanceId || !token) {

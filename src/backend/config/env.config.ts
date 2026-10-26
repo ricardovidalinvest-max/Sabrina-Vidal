@@ -52,19 +52,19 @@ export const verifyAdminPassword = (inputPass: string): boolean => {
 };
 
 export const updateLiveConfig = (newValues: Partial<BackendConfig>): BackendConfig => {
-  if (newValues.calcomApiKey !== undefined) currentConfig.calcomApiKey = newValues.calcomApiKey.trim();
+  if (newValues.calcomApiKey !== undefined && newValues.calcomApiKey.trim().length > 0) currentConfig.calcomApiKey = newValues.calcomApiKey.trim();
   if (newValues.calcomWebhookSecret !== undefined) currentConfig.calcomWebhookSecret = newValues.calcomWebhookSecret.trim();
-  if (newValues.calcomBaseUrl !== undefined) currentConfig.calcomBaseUrl = newValues.calcomBaseUrl.trim();
-  if (newValues.calcomEventUrl !== undefined) currentConfig.calcomEventUrl = newValues.calcomEventUrl.trim();
+  if (newValues.calcomBaseUrl !== undefined && newValues.calcomBaseUrl.trim().length > 0) currentConfig.calcomBaseUrl = newValues.calcomBaseUrl.trim();
+  if (newValues.calcomEventUrl !== undefined && newValues.calcomEventUrl.trim().length > 0) currentConfig.calcomEventUrl = newValues.calcomEventUrl.trim();
 
-  if (newValues.asaasApiKey !== undefined) currentConfig.asaasApiKey = newValues.asaasApiKey.trim();
+  if (newValues.asaasApiKey !== undefined && newValues.asaasApiKey.trim().length > 0) currentConfig.asaasApiKey = newValues.asaasApiKey.trim();
   if (newValues.asaasEnvironment !== undefined) currentConfig.asaasEnvironment = newValues.asaasEnvironment;
   if (newValues.asaasWebhookToken !== undefined) currentConfig.asaasWebhookToken = newValues.asaasWebhookToken.trim();
 
-  if (newValues.zapiInstanceId !== undefined) currentConfig.zapiInstanceId = newValues.zapiInstanceId.trim();
-  if (newValues.zapiToken !== undefined) currentConfig.zapiToken = newValues.zapiToken.trim();
-  if (newValues.zapiClientToken !== undefined) currentConfig.zapiClientToken = newValues.zapiClientToken.trim();
-  if (newValues.zapiBaseUrl !== undefined) currentConfig.zapiBaseUrl = newValues.zapiBaseUrl.trim();
+  if (newValues.zapiInstanceId !== undefined && newValues.zapiInstanceId.trim().length > 0) currentConfig.zapiInstanceId = newValues.zapiInstanceId.trim();
+  if (newValues.zapiToken !== undefined && newValues.zapiToken.trim().length > 0) currentConfig.zapiToken = newValues.zapiToken.trim();
+  if (newValues.zapiClientToken !== undefined && newValues.zapiClientToken.trim().length > 0) currentConfig.zapiClientToken = newValues.zapiClientToken.trim();
+  if (newValues.zapiBaseUrl !== undefined && newValues.zapiBaseUrl.trim().length > 0) currentConfig.zapiBaseUrl = newValues.zapiBaseUrl.trim();
 
   if (newValues.consultationPriceBrl !== undefined) currentConfig.consultationPriceBrl = Number(newValues.consultationPriceBrl);
   if (newValues.pixExpirationMinutes !== undefined) currentConfig.pixExpirationMinutes = Number(newValues.pixExpirationMinutes);

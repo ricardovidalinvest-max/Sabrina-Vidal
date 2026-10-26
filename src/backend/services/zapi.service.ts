@@ -74,7 +74,40 @@ export class ZApiService {
       }
     }
 
-    return clean;
+  /**
+   * Obtém variantes do número de telefone brasileiro (com e sem o 9º dígito),
+   * para resolver incompatibilidade do WhatsApp em DDDs como 62, 11, etc.
+   */
+  getPhoneVariants(rawPhone: string): string[] {
+    let clean = (rawPhone || '').replace(/\D/g, '');
+    if (clean.startsWith('0') && clean.length >= 11) {
+      clean = clean.replace(/^0+/, '');
+    }
+    if (!clean.startsWith('55')) {
+      clean = `55${clean}`;
+    }
+
+    const variants: string[] = [clean];
+
+    // Se tiver 13 dígitos: 55 + DD + 9XXXXXXXX (ex: 5562993431970)
+    // Alternativa: 556293431970 (remove o primeiro 9 após o DDD)
+    if (clean.length === 13 && clean.startsWith('55')) {
+      const ddd = clean.substring(2, 4);
+      const rest = clean.substring(5);
+      if (clean[4] === '9') {
+        variants.push(`55${ddd}${rest}`);
+      }
+    }
+
+    // Se tiver 12 dígitos: 55 + DD + XXXXXXXX (ex: 556293431970)
+    // Alternativa: 5562993431970 (insere o 9 após o DDD)
+    if (clean.length === 12 && clean.startsWith('55')) {
+      const ddd = clean.substring(2, 4);
+      const rest = clean.substring(4);
+      variants.push(`55${ddd}9${rest}`);
+    }
+
+    return [...new Set(variants)];
   }
 
   /**
@@ -85,9 +118,10 @@ export class ZApiService {
     token?: string;
     clientToken?: string;
   }): Promise<ZApiStatusResult> {
-    const instId = (overrides?.instanceId || this.instanceId || '').trim();
-    const tok = (overrides?.token || this.token || '').trim();
-    const clTok = (overrides?.clientToken || this.clientToken || '').trim();
+    const live = getLiveConfig();
+    const instId = (overrides?.instanceId || live.zapiInstanceId || process.env.ZAPI_INSTANCE_ID || '').trim();
+    const tok = (overrides?.token || live.zapiToken || process.env.ZAPI_TOKEN || '').trim();
+    const clTok = (overrides?.clientToken !== undefined ? overrides.clientToken : (live.zapiClientToken || process.env.ZAPI_CLIENT_TOKEN || '')).trim();
 
     if (!instId || !tok) {
       return {
@@ -108,21 +142,18 @@ export class ZApiService {
 
       console.log(`[ZApiService] Verificando status da instância Z-API: ${instId}...`);
       const response = await fetch(url, { method: 'GET', headers });
+      const text = await response.text();
+      let data: any = {};
+      try { data = JSON.parse(text); } catch { data = { raw: text }; }
+      console.log(`[ZApiService:STATUS_RAW] Resposta status Z-API HTTP ${response.status}:`, JSON.stringify(data));
 
       if (!response.ok) {
-        const errText = await response.text();
-        let parsed = errText;
-        try {
-          const json = JSON.parse(errText);
-          parsed = json.error || json.message || errText;
-        } catch {}
-
         if (response.status === 401 || response.status === 403) {
           return {
             success: false,
             connected: false,
-            message: `Falha de autenticação na Z-API (Status ${response.status}): ${parsed}. Certifique-se de preencher o Token da Instância e o Client-Token (token de segurança da conta no painel Z-API).`,
-            error: parsed,
+            message: `Falha de autenticação na Z-API (HTTP ${response.status}): ${data.error || text}. Verifique se o Token da Instância e o Client-Token (token de segurança da conta) estão corretos.`,
+            error: data.error || text,
           };
         }
 
@@ -131,45 +162,44 @@ export class ZApiService {
             success: false,
             connected: false,
             message: `Instância não encontrada (Status 404): O ID '${instId}' não foi localizado na Z-API.`,
-            error: parsed,
+            error: data.error || text,
           };
         }
 
         return {
           success: false,
           connected: false,
-          message: `Erro retornado pela Z-API (Status ${response.status}): ${parsed}`,
-          error: parsed,
+          message: `Erro retornado pela Z-API (Status ${response.status}): ${data.error || text}`,
+          error: data.error || text,
         };
       }
 
-      const data = await response.json();
-      const isConnected = Boolean(data.connected);
-      const isSmartphoneConnected = data.smartphoneConnected !== undefined ? Boolean(data.smartphoneConnected) : true;
+      // Detecção resiliente de conexão (suporta boolean, string, status de sessão e número conectado)
+      const isConnected = data.connected === true ||
+                          String(data.connected).toLowerCase() === 'true' ||
+                          String(data.status).toUpperCase() === 'CONNECTED' ||
+                          String(data.sessionStatus).toUpperCase() === 'CONNECTED' ||
+                          Boolean(data.phone);
+
+      const isSmartphoneConnected = data.smartphoneConnected !== undefined
+        ? Boolean(data.smartphoneConnected)
+        : true;
 
       if (isConnected) {
-        if (!isSmartphoneConnected) {
-          return {
-            success: true,
-            connected: true,
-            smartphoneConnected: false,
-            message: '⚠️ A Instância está autenticada, porém o CELULAR físico está DESCONECTADO da internet ou desligado (smartphoneConnected: false). Ative a internet no seu aparelho para as mensagens chegarem.',
-            sessionStatus: 'SMARTPHONE_OFFLINE',
-          };
-        }
-
         return {
           success: true,
           connected: true,
-          smartphoneConnected: true,
-          message: '✓ Instância Z-API conectada e pronta para envio no WhatsApp!',
+          smartphoneConnected: isSmartphoneConnected,
+          message: isSmartphoneConnected
+            ? '✓ Instância Z-API conectada e pronta para envio no WhatsApp!'
+            : '✓ WhatsApp Pareado e Ativo via Multi-Device (Celular em modo repouso/offline). Envio de mensagens liberado!',
           sessionStatus: 'CONNECTED',
         };
       } else {
         return {
           success: true,
           connected: false,
-          message: '⚠️ Instância localizada com sucesso, porém o WhatsApp está DESCONECTADO. É necessário escanear o QR Code no seu aplicativo do WhatsApp.',
+          message: data.error || '⚠️ Instância localizada com sucesso, porém o WhatsApp está DESCONECTADO. Clique em "Escanear QR Code" para conectar.',
           sessionStatus: data.sessionStatus || 'DISCONNECTED',
         };
       }
@@ -409,9 +439,41 @@ export class ZApiService {
         };
       }
 
-      // Validação caso Z-API responda HTTP 200 porém com erro no corpo
+      // Validação caso Z-API responda HTTP 200 porém com erro no corpo (ex: NOT_FOUND)
       if (resData.error && String(resData.error).trim().length > 0) {
-        console.warn(`[ZApiService:WARN] Z-API respondeu 200 mas com erro no payload:`, resData.error);
+        const errStr = String(resData.error).toUpperCase();
+        console.warn(`[ZApiService:WARN] Z-API respondeu 200 com erro no payload:`, resData.error);
+
+        // Se for erro NOT_FOUND (número não localizado no WhatsApp), tenta automaticamente a variante (sem ou com o 9º dígito)
+        const variants = this.getPhoneVariants(rawPhone);
+        if ((errStr.includes('NOT_FOUND') || errStr.includes('NOT FOUND')) && variants.length > 1) {
+          const altPhone = variants.find((v) => v !== phone);
+          if (altPhone) {
+            console.log(`[ZApiService:RETRY] Número ${phone} retornou NOT_FOUND. Retentando automaticamente com formato alternativo: ${altPhone}...`);
+            const retryRes = await fetch(url, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({
+                phone: altPhone,
+                message: message,
+              }),
+            });
+            const retryText = await retryRes.text();
+            let retryData: any = {};
+            try { retryData = JSON.parse(retryText); } catch { retryData = { raw: retryText }; }
+
+            if (retryRes.ok && (!retryData.error || !String(retryData.error).toUpperCase().includes('NOT_FOUND'))) {
+              const altMessageId = retryData.zaapId || retryData.messageId || retryData.id || 'OK';
+              console.log(`[ZApiService:SUCCESS] Mensagem entregue com sucesso via formato alternativo ${altPhone}! ID: ${altMessageId}`);
+              return {
+                success: true,
+                messageId: altMessageId,
+                rawResponse: retryData,
+              };
+            }
+          }
+        }
+
         return {
           success: false,
           error: `Z-API recusou a mensagem: ${resData.error}`,

@@ -123,7 +123,7 @@ let asaasApiKey = process.env.ASAAS_API_KEY || '';
 let asaasEnvironment: 'production' | 'sandbox' =
   ((process.env.ASAAS_ENVIRONMENT as 'production' | 'sandbox') ||
   (asaasApiKey.startsWith('$aact_') ? 'production' : 'production'));
-let asaasWebhookToken = process.env.ASAAS_WEBHOOK_TOKEN || 'whsec_8RvJb3lvYWcwIE2pByN073lTotEFzN-BGFaehqMTzGI';
+let asaasWebhookToken = process.env.ASAAS_WEBHOOK_TOKEN || '';
 
 const getAsaasApiKey = (): string => {
   const live = getLiveConfig();
@@ -141,7 +141,7 @@ const getAsaasEnvironment = (): 'production' | 'sandbox' => {
 const getAsaasWebhookToken = (): string => {
   const live = getLiveConfig();
   if (live.asaasWebhookToken) asaasWebhookToken = live.asaasWebhookToken;
-  return asaasWebhookToken || 'whsec_8RvJb3lvYWcwIE2pByN073lTotEFzN-BGFaehqMTzGI';
+  return asaasWebhookToken || '';
 };
 
 // Webhook Hub: Make.com, Evolution API (WhatsApp), Google Sheets

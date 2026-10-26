@@ -22,13 +22,13 @@ export interface BackendConfig {
 // Estado em memória inicializado com variáveis de ambiente ou padrões seguros
 const currentConfig: BackendConfig = {
   calcomApiKey: process.env.CALCOM_API_KEY || '',
-  calcomWebhookSecret: process.env.CALCOM_WEBHOOK_SECRET || 'whsec_calcom_sabrina_vidal_social',
+  calcomWebhookSecret: process.env.CALCOM_WEBHOOK_SECRET || '',
   calcomBaseUrl: process.env.CALCOM_BASE_URL || 'https://api.cal.com/v2',
   calcomEventUrl: process.env.CALCOM_EVENT_URL || 'https://cal.com/sabrina-amorim-tkood0/agendamentos-de-consultas',
 
   asaasApiKey: process.env.ASAAS_API_KEY || '',
   asaasEnvironment: (process.env.ASAAS_ENVIRONMENT as 'production' | 'sandbox') || 'production',
-  asaasWebhookToken: process.env.ASAAS_WEBHOOK_TOKEN || 'whsec_8RvJb3lvYWcwIE2pByN073lTotEFzN-BGFaehqMTzGI',
+  asaasWebhookToken: process.env.ASAAS_WEBHOOK_TOKEN || '',
 
   zapiInstanceId: process.env.ZAPI_INSTANCE_ID || '',
   zapiToken: process.env.ZAPI_TOKEN || '',

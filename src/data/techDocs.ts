@@ -903,7 +903,7 @@ CALCOM_BASE_URL="https://api.cal.com/v2"
 # ASAAS
 ASAAS_API_KEY="$aact_YTU5YTE0M2M6N2ZkMS00MzJmLTg1YTctxxxxxxxxxxxxxxxxxxxxxx"
 ASAAS_ENVIRONMENT="production" # ou "sandbox"
-ASAAS_WEBHOOK_TOKEN="whsec_8RvJb3lvYWcwIE2pByN073lTotEFzN-BGFaehqMTzGI"
+ASAAS_WEBHOOK_TOKEN="whsec_seu_token_webhook_asaas"
 
 # Z-API (WhatsApp)
 ZAPI_INSTANCE_ID="3Cxxxxxxxxxxxxxxxxxxxxxx"

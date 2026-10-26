@@ -132,11 +132,11 @@ export const AutomationTechGuideModal: React.FC<TechGuideProps> = ({ isOpen, onC
   // Keys Input States (Inserção)
   const [asaasApiKeyInput, setAsaasApiKeyInput] = useState<string>('');
   const [asaasEnvInput, setAsaasEnvInput] = useState<'production' | 'sandbox'>('production');
-  const [asaasWebhookTokenInput, setAsaasWebhookTokenInput] = useState<string>('whsec_8RvJb3lvYWcwIE2pByN073lTotEFzN-BGFaehqMTzGI');
+  const [asaasWebhookTokenInput, setAsaasWebhookTokenInput] = useState<string>('');
   const [showAsaasKey, setShowAsaasKey] = useState<boolean>(false);
 
   const [calcomApiKeyInput, setCalcomApiKeyInput] = useState<string>('');
-  const [calcomSecretInput, setCalcomSecretInput] = useState<string>('whsec_calcom_sabrina_vidal_social');
+  const [calcomSecretInput, setCalcomSecretInput] = useState<string>('');
   const [calcomEventUrlInput, setCalcomEventUrlInput] = useState<string>('https://cal.com/sabrina-amorim-tkood0/agendamentos-de-consultas');
   const [showCalcomKey, setShowCalcomKey] = useState<boolean>(false);
 

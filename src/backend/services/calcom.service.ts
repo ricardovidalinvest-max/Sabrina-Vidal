@@ -115,92 +115,113 @@ export class CalcomService {
   }
 
   /**
-   * Consulta a disponibilidade real de horários no Cal.com para uma data ou intervalo
-   * Se o Cal.com estiver sem API key ou em caso de falha de conexão, aplica fallback inteligente com os horários da clínica
+   * Consulta a disponibilidade real de horários no Cal.com para uma data ou intervalo (até 30 dias pra frente)
+   * Realiza a busca automática na API oficial v2 do Cal.com (/v2/slots).
+   * Se o Cal.com estiver temporariamente indisponível, aplica fallback inteligente com a grade oficial.
    */
   async getAvailableSlots(params?: {
     date?: string;
     eventTypeId?: number | string;
     startTime?: string;
     endTime?: string;
+    daysAhead?: number;
   }): Promise<{ success: boolean; slots: AvailableSlotDay[]; source: 'calcom_v2' | 'schedule_fallback' }> {
-    const requestedDate = params?.date || new Date().toISOString().split('T')[0];
+    const daysAhead = params?.daysAhead || 30;
+    const now = new Date();
+    const startDateStr = params?.startTime?.split('T')[0] || now.toISOString().split('T')[0];
+    const endD = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000);
+    const endDateStr = params?.endTime?.split('T')[0] || endD.toISOString().split('T')[0];
 
-    // Se temos a API Key do Cal.com, tenta buscar os slots na API v2
-    if (this.apiKey) {
-      try {
-        let eventTypeId = params?.eventTypeId;
-        if (!eventTypeId) {
-          const eventsRes = await this.getEventTypes();
-          if (eventsRes.success && eventsRes.data && eventsRes.data.length > 0) {
-            eventTypeId = eventsRes.data[0].id;
-          }
-        }
+    // Extrai username e eventTypeSlug da URL do Cal.com da nutricionista
+    const liveConf = getLiveConfig();
+    const eventUrl = liveConf.calcomEventUrl || process.env.CALCOM_EVENT_URL || 'https://cal.com/sabrina-amorim-tkood0/agendamentos-de-consultas';
+    let username = 'sabrina-amorim-tkood0';
+    let eventTypeSlug = 'agendamentos-de-consultas';
+    try {
+      const parts = new URL(eventUrl).pathname.split('/').filter(Boolean);
+      if (parts.length >= 2) {
+        username = parts[0];
+        eventTypeSlug = parts[1];
+      }
+    } catch {
+      // defaults
+    }
 
-        const startIso = params?.startTime || `${requestedDate}T00:00:00Z`;
-        const endD = new Date(requestedDate);
-        endD.setDate(endD.getDate() + 7);
-        const endIso = params?.endTime || endD.toISOString();
+    try {
+      const queryUrl = new URL(`${this.baseUrl}/slots`);
+      queryUrl.searchParams.set('start', startDateStr);
+      queryUrl.searchParams.set('end', endDateStr);
+      queryUrl.searchParams.set('username', username);
+      queryUrl.searchParams.set('eventTypeSlug', eventTypeSlug);
+      queryUrl.searchParams.set('timeZone', 'America/Sao_Paulo');
 
-        const queryUrl = new URL(`${this.baseUrl}/slots/available`);
-        queryUrl.searchParams.set('startTime', startIso);
-        queryUrl.searchParams.set('endTime', endIso);
-        if (eventTypeId) {
-          queryUrl.searchParams.set('eventTypeId', String(eventTypeId));
-        }
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'cal-api-version': '2024-09-04',
+      };
+      if (this.apiKey) {
+        headers['Authorization'] = `Bearer ${this.apiKey}`;
+      }
 
-        const res = await fetch(queryUrl.toString(), {
-          method: 'GET',
-          headers: this.getHeaders(),
-        });
+      console.log(`[CalcomService] Sincronização automática de agenda no Cal.com v2: ${queryUrl.toString()}...`);
+      const res = await fetch(queryUrl.toString(), {
+        method: 'GET',
+        headers,
+      });
 
-        if (res.ok) {
-          const resData = await res.json();
-          const rawSlots = resData.data?.slots || resData.slots || {};
+      if (res.ok) {
+        const resData = await res.json();
+        const rawSlots = resData.data?.slots || resData.data || {};
+        const dayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+        const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
-          const dayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-          const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-
-          const formattedDays: AvailableSlotDay[] = Object.keys(rawSlots).map((dayKey) => {
-            const dateObj = new Date(`${dayKey}T12:00:00Z`);
+        const formattedDays: AvailableSlotDay[] = Object.keys(rawSlots)
+          .sort()
+          .map((dayKey) => {
+            const [year, month, day] = dayKey.split('-').map(Number);
+            const dateObj = new Date(year, month - 1, day, 12, 0, 0);
             const timeList = (rawSlots[dayKey] || []).map((s: any) => {
-              const tStr = typeof s === 'string' ? s : s.time || s.start;
-              const datePart = new Date(tStr);
-              return datePart.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
+              const tStr = typeof s === 'string' ? s : s.time || s.start || s.startTime;
+              if (tStr && typeof tStr === 'string' && tStr.includes('T')) {
+                return tStr.split('T')[1].slice(0, 5);
+              }
+              return String(tStr);
             });
 
             return {
               date: dayKey,
-              dayOfWeek: dayNames[dateObj.getUTCDay()],
-              dayNumber: String(dateObj.getUTCDate()).padStart(2, '0'),
-              monthName: monthNames[dateObj.getUTCMonth()],
+              dayOfWeek: dayNames[dateObj.getDay()],
+              dayNumber: String(day).padStart(2, '0'),
+              monthName: monthNames[month - 1],
               timeSlots: timeList,
               slotsRemaining: timeList.length,
               isRealCalcom: true,
             };
-          });
+          })
+          .filter((d) => d.slotsRemaining > 0);
 
-          if (formattedDays.length > 0 && formattedDays.some(d => d.timeSlots.length > 0)) {
-            console.log(`[CalcomService:v2] ${formattedDays.length} dias de disponibilidade obtidos diretamente do Cal.com.`);
-            return { success: true, slots: formattedDays, source: 'calcom_v2' };
-          }
-        } else {
-          console.warn(`[CalcomService:v2:WARN] Endpoint de slots retornou HTTP ${res.status}. Utilizando grade oficial da clínica.`);
+        if (formattedDays.length > 0) {
+          console.log(`[CalcomService:v2] Sincronização automática bem-sucedida com Cal.com: ${formattedDays.length} dias de horários disponíveis encontrados.`);
+          return { success: true, slots: formattedDays, source: 'calcom_v2' };
         }
-      } catch (err: any) {
-        console.warn(`[CalcomService:v2:WARN] Falha ao consultar disponibilidade na API do Cal.com: ${err.message}.`);
+      } else {
+        const errText = await res.text();
+        console.warn(`[CalcomService:v2:WARN] Endpoint Cal.com /v2/slots retornou HTTP ${res.status}: ${errText}`);
       }
+    } catch (err: any) {
+      console.warn(`[CalcomService:v2:WARN] Falha na consulta automática da agenda Cal.com: ${err.message}`);
     }
 
-    // Grade oficial da clínica da Dra. Sabrina Vidal
-    const fallbackDays = this.generateClinicWeeklySlots();
+    // Grade oficial da clínica da Dra. Sabrina Vidal caso Cal.com não responda
+    const fallbackDays = this.generateClinicSlots(daysAhead);
     return { success: true, slots: fallbackDays, source: 'schedule_fallback' };
   }
 
   /**
-   * Gera a grade horária semanal da Dra. Sabrina Vidal
+   * Gera a grade horária oficial da Dra. Sabrina Vidal para até 30 dias no futuro
+   * Exclui domingos e horários passados do dia atual
    */
-  private generateClinicWeeklySlots(): AvailableSlotDay[] {
+  private generateClinicSlots(daysAhead: number = 30): AvailableSlotDay[] {
     const now = new Date();
     const dayNames = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
     const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
@@ -214,33 +235,48 @@ export class CalcomService {
       6: ['08:30', '10:00', '11:30'],                   // Sábado
     };
 
-    const currentDayOfWeek = now.getDay();
-    const distanceToMonday = currentDayOfWeek === 0 ? -6 : 1 - currentDayOfWeek;
-    const monday = new Date(now);
-    monday.setDate(now.getDate() + distanceToMonday);
-
     const days: AvailableSlotDay[] = [];
-    for (let i = 0; i < 6; i++) {
-      const d = new Date(monday);
-      d.setDate(monday.getDate() + i);
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+
+    for (let i = 0; i < daysAhead; i++) {
+      const d = new Date(now);
+      d.setDate(now.getDate() + i);
       const dayOfWeekIndex = d.getDay();
+      
+      // Pula domingos (clínica fecha)
+      if (dayOfWeekIndex === 0) continue;
+
       const dayOfWeek = dayNames[dayOfWeekIndex];
       const dayNumber = String(d.getDate()).padStart(2, '0');
       const monthName = monthNames[d.getMonth()];
       const year = d.getFullYear();
       const dateStr = `${year}-${String(d.getMonth() + 1).padStart(2, '0')}-${dayNumber}`;
-      const timeSlots = slotsByDay[dayOfWeekIndex] || ['09:00', '14:00', '16:30'];
+      
+      let baseSlots = [...(slotsByDay[dayOfWeekIndex] || ['09:00', '14:00', '16:30'])];
 
-      days.push({
-        date: dateStr,
-        dayOfWeek,
-        dayNumber,
-        monthName,
-        slotsRemaining: timeSlots.length,
-        timeSlots,
-        isRealCalcom: false,
-      });
+      // Se for o próprio dia de hoje, remove horários que já passaram
+      if (i === 0) {
+        baseSlots = baseSlots.filter((timeStr) => {
+          const [h, m] = timeStr.split(':').map(Number);
+          return h > currentHour || (h === currentHour && m > currentMinute + 15);
+        });
+      }
+
+      // Adiciona o dia se ainda tiver vagas livres disponíveis
+      if (baseSlots.length > 0) {
+        days.push({
+          date: dateStr,
+          dayOfWeek,
+          dayNumber,
+          monthName,
+          slotsRemaining: baseSlots.length,
+          timeSlots: baseSlots,
+          isRealCalcom: false,
+        });
+      }
     }
+
     return days;
   }
 

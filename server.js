@@ -408,74 +408,91 @@ var CalcomService = class {
     }
   }
   /**
-   * Consulta a disponibilidade real de horários no Cal.com para uma data ou intervalo
-   * Se o Cal.com estiver sem API key ou em caso de falha de conexão, aplica fallback inteligente com os horários da clínica
+   * Consulta a disponibilidade real de horários no Cal.com para uma data ou intervalo (até 30 dias pra frente)
+   * Realiza a busca automática na API oficial v2 do Cal.com (/v2/slots).
+   * Se o Cal.com estiver temporariamente indisponível, aplica fallback inteligente com a grade oficial.
    */
   async getAvailableSlots(params) {
-    const requestedDate = params?.date || (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
-    if (this.apiKey) {
-      try {
-        let eventTypeId = params?.eventTypeId;
-        if (!eventTypeId) {
-          const eventsRes = await this.getEventTypes();
-          if (eventsRes.success && eventsRes.data && eventsRes.data.length > 0) {
-            eventTypeId = eventsRes.data[0].id;
-          }
-        }
-        const startIso = params?.startTime || `${requestedDate}T00:00:00Z`;
-        const endD = new Date(requestedDate);
-        endD.setDate(endD.getDate() + 7);
-        const endIso = params?.endTime || endD.toISOString();
-        const queryUrl = new URL(`${this.baseUrl}/slots/available`);
-        queryUrl.searchParams.set("startTime", startIso);
-        queryUrl.searchParams.set("endTime", endIso);
-        if (eventTypeId) {
-          queryUrl.searchParams.set("eventTypeId", String(eventTypeId));
-        }
-        const res = await fetch(queryUrl.toString(), {
-          method: "GET",
-          headers: this.getHeaders()
-        });
-        if (res.ok) {
-          const resData = await res.json();
-          const rawSlots = resData.data?.slots || resData.slots || {};
-          const dayNames = ["Domingo", "Segunda", "Ter\xE7a", "Quarta", "Quinta", "Sexta", "S\xE1bado"];
-          const monthNames = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
-          const formattedDays = Object.keys(rawSlots).map((dayKey) => {
-            const dateObj = /* @__PURE__ */ new Date(`${dayKey}T12:00:00Z`);
-            const timeList = (rawSlots[dayKey] || []).map((s) => {
-              const tStr = typeof s === "string" ? s : s.time || s.start;
-              const datePart = new Date(tStr);
-              return datePart.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
-            });
-            return {
-              date: dayKey,
-              dayOfWeek: dayNames[dateObj.getUTCDay()],
-              dayNumber: String(dateObj.getUTCDate()).padStart(2, "0"),
-              monthName: monthNames[dateObj.getUTCMonth()],
-              timeSlots: timeList,
-              slotsRemaining: timeList.length,
-              isRealCalcom: true
-            };
-          });
-          if (formattedDays.length > 0 && formattedDays.some((d) => d.timeSlots.length > 0)) {
-            console.log(`[CalcomService:v2] ${formattedDays.length} dias de disponibilidade obtidos diretamente do Cal.com.`);
-            return { success: true, slots: formattedDays, source: "calcom_v2" };
-          }
-        } else {
-          console.warn(`[CalcomService:v2:WARN] Endpoint de slots retornou HTTP ${res.status}. Utilizando grade oficial da cl\xEDnica.`);
-        }
-      } catch (err) {
-        console.warn(`[CalcomService:v2:WARN] Falha ao consultar disponibilidade na API do Cal.com: ${err.message}.`);
+    const daysAhead = params?.daysAhead || 30;
+    const now = /* @__PURE__ */ new Date();
+    const startDateStr = params?.startTime?.split("T")[0] || now.toISOString().split("T")[0];
+    const endD = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1e3);
+    const endDateStr = params?.endTime?.split("T")[0] || endD.toISOString().split("T")[0];
+    const liveConf = getLiveConfig();
+    const eventUrl = liveConf.calcomEventUrl || process.env.CALCOM_EVENT_URL || "https://cal.com/sabrina-amorim-tkood0/agendamentos-de-consultas";
+    let username = "sabrina-amorim-tkood0";
+    let eventTypeSlug = "agendamentos-de-consultas";
+    try {
+      const parts = new URL(eventUrl).pathname.split("/").filter(Boolean);
+      if (parts.length >= 2) {
+        username = parts[0];
+        eventTypeSlug = parts[1];
       }
+    } catch {
     }
-    const fallbackDays = this.generateClinicWeeklySlots();
+    try {
+      const queryUrl = new URL(`${this.baseUrl}/slots`);
+      queryUrl.searchParams.set("start", startDateStr);
+      queryUrl.searchParams.set("end", endDateStr);
+      queryUrl.searchParams.set("username", username);
+      queryUrl.searchParams.set("eventTypeSlug", eventTypeSlug);
+      queryUrl.searchParams.set("timeZone", "America/Sao_Paulo");
+      const headers = {
+        "Content-Type": "application/json",
+        "cal-api-version": "2024-09-04"
+      };
+      if (this.apiKey) {
+        headers["Authorization"] = `Bearer ${this.apiKey}`;
+      }
+      console.log(`[CalcomService] Sincroniza\xE7\xE3o autom\xE1tica de agenda no Cal.com v2: ${queryUrl.toString()}...`);
+      const res = await fetch(queryUrl.toString(), {
+        method: "GET",
+        headers
+      });
+      if (res.ok) {
+        const resData = await res.json();
+        const rawSlots = resData.data?.slots || resData.data || {};
+        const dayNames = ["Domingo", "Segunda", "Ter\xE7a", "Quarta", "Quinta", "Sexta", "S\xE1bado"];
+        const monthNames = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+        const formattedDays = Object.keys(rawSlots).sort().map((dayKey) => {
+          const [year, month, day] = dayKey.split("-").map(Number);
+          const dateObj = new Date(year, month - 1, day, 12, 0, 0);
+          const timeList = (rawSlots[dayKey] || []).map((s) => {
+            const tStr = typeof s === "string" ? s : s.time || s.start || s.startTime;
+            if (tStr && typeof tStr === "string" && tStr.includes("T")) {
+              return tStr.split("T")[1].slice(0, 5);
+            }
+            return String(tStr);
+          });
+          return {
+            date: dayKey,
+            dayOfWeek: dayNames[dateObj.getDay()],
+            dayNumber: String(day).padStart(2, "0"),
+            monthName: monthNames[month - 1],
+            timeSlots: timeList,
+            slotsRemaining: timeList.length,
+            isRealCalcom: true
+          };
+        }).filter((d) => d.slotsRemaining > 0);
+        if (formattedDays.length > 0) {
+          console.log(`[CalcomService:v2] Sincroniza\xE7\xE3o autom\xE1tica bem-sucedida com Cal.com: ${formattedDays.length} dias de hor\xE1rios dispon\xEDveis encontrados.`);
+          return { success: true, slots: formattedDays, source: "calcom_v2" };
+        }
+      } else {
+        const errText = await res.text();
+        console.warn(`[CalcomService:v2:WARN] Endpoint Cal.com /v2/slots retornou HTTP ${res.status}: ${errText}`);
+      }
+    } catch (err) {
+      console.warn(`[CalcomService:v2:WARN] Falha na consulta autom\xE1tica da agenda Cal.com: ${err.message}`);
+    }
+    const fallbackDays = this.generateClinicSlots(daysAhead);
     return { success: true, slots: fallbackDays, source: "schedule_fallback" };
   }
   /**
-   * Gera a grade horária semanal da Dra. Sabrina Vidal
+   * Gera a grade horária oficial da Dra. Sabrina Vidal para até 30 dias no futuro
+   * Exclui domingos e horários passados do dia atual
    */
-  generateClinicWeeklySlots() {
+  generateClinicSlots(daysAhead = 30) {
     const now = /* @__PURE__ */ new Date();
     const dayNames = ["Domingo", "Segunda", "Ter\xE7a", "Quarta", "Quinta", "Sexta", "S\xE1bado"];
     const monthNames = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
@@ -493,30 +510,37 @@ var CalcomService = class {
       6: ["08:30", "10:00", "11:30"]
       // Sábado
     };
-    const currentDayOfWeek = now.getDay();
-    const distanceToMonday = currentDayOfWeek === 0 ? -6 : 1 - currentDayOfWeek;
-    const monday = new Date(now);
-    monday.setDate(now.getDate() + distanceToMonday);
     const days = [];
-    for (let i = 0; i < 6; i++) {
-      const d = new Date(monday);
-      d.setDate(monday.getDate() + i);
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+    for (let i = 0; i < daysAhead; i++) {
+      const d = new Date(now);
+      d.setDate(now.getDate() + i);
       const dayOfWeekIndex = d.getDay();
+      if (dayOfWeekIndex === 0) continue;
       const dayOfWeek = dayNames[dayOfWeekIndex];
       const dayNumber = String(d.getDate()).padStart(2, "0");
       const monthName = monthNames[d.getMonth()];
       const year = d.getFullYear();
       const dateStr = `${year}-${String(d.getMonth() + 1).padStart(2, "0")}-${dayNumber}`;
-      const timeSlots = slotsByDay[dayOfWeekIndex] || ["09:00", "14:00", "16:30"];
-      days.push({
-        date: dateStr,
-        dayOfWeek,
-        dayNumber,
-        monthName,
-        slotsRemaining: timeSlots.length,
-        timeSlots,
-        isRealCalcom: false
-      });
+      let baseSlots = [...slotsByDay[dayOfWeekIndex] || ["09:00", "14:00", "16:30"]];
+      if (i === 0) {
+        baseSlots = baseSlots.filter((timeStr) => {
+          const [h, m] = timeStr.split(":").map(Number);
+          return h > currentHour || h === currentHour && m > currentMinute + 15;
+        });
+      }
+      if (baseSlots.length > 0) {
+        days.push({
+          date: dateStr,
+          dayOfWeek,
+          dayNumber,
+          monthName,
+          slotsRemaining: baseSlots.length,
+          timeSlots: baseSlots,
+          isRealCalcom: false
+        });
+      }
     }
     return days;
   }
@@ -1947,10 +1971,11 @@ backendRouter.post("/api/backend/config/test-calcom", requireAdminAuth, async (r
 });
 backendRouter.get("/api/calcom/available-slots", async (req, res) => {
   try {
-    const { date, eventTypeId } = req.query;
+    const { date, eventTypeId, daysAhead } = req.query;
     const result = await calcomService.getAvailableSlots({
       date,
-      eventTypeId: eventTypeId ? String(eventTypeId) : void 0
+      eventTypeId: eventTypeId ? String(eventTypeId) : void 0,
+      daysAhead: daysAhead ? Number(daysAhead) : 30
     });
     res.json(result);
   } catch (error) {

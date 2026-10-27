@@ -347,13 +347,14 @@ backendRouter.post('/api/backend/config/test-calcom', requireAdminAuth, async (r
 // 3.1 FLUXO CAL.COM: DISPONIBILIDADE, PRÉ-RESERVA (15 MIN) & CANCELAMENTO AUTOMÁTICO
 // ==============================================================================
 
-// Consultar disponibilidade de horários no Cal.com para agendamento
+// Consultar disponibilidade de horários no Cal.com para agendamento (até 30 dias para frente)
 backendRouter.get('/api/calcom/available-slots', async (req: Request, res: Response) => {
   try {
-    const { date, eventTypeId } = req.query;
+    const { date, eventTypeId, daysAhead } = req.query;
     const result = await calcomService.getAvailableSlots({
       date: date as string,
       eventTypeId: eventTypeId ? String(eventTypeId) : undefined,
+      daysAhead: daysAhead ? Number(daysAhead) : 30,
     });
     res.json(result);
   } catch (error: any) {

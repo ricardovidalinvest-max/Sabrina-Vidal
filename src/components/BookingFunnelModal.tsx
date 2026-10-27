@@ -20,6 +20,9 @@ import {
   CreditCard,
   FileText,
   RefreshCw,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { BookingFormData, FunnelStep } from '../types';
 import { AVAILABLE_DAYS } from '../data/copywriting';
@@ -94,6 +97,9 @@ export const WEEK_AVAILABLE_DAYS = getWeekAvailableDays();
 
 export const BookingFunnelModal: React.FC<BookingFunnelModalProps> = ({ isOpen, onClose }) => {
   const [step, setStep] = useState<FunnelStep>('calendar');
+  const [viewMode, setViewMode] = useState<'week' | '30days'>('week');
+  const [selectedWeekIndex, setSelectedWeekIndex] = useState<number>(0);
+  const [selectedDate, setSelectedDate] = useState<string>(WEEK_AVAILABLE_DAYS[0]?.date || '');
   const [selectedDayIndex, setSelectedDayIndex] = useState<number>(0);
   const [selectedTime, setSelectedTime] = useState<string>('09:00');
   const [calcomBookingUid, setCalcomBookingUid] = useState<string>('');
@@ -224,35 +230,53 @@ export const BookingFunnelModal: React.FC<BookingFunnelModalProps> = ({ isOpen, 
     return () => window.removeEventListener('message', handleCalcomMessage);
   }, [formData.fullName, formData.email, meetUrl]);
 
-  // Busca disponibilidade de horários no Cal.com ao abrir o modal
-  useEffect(() => {
-    if (isOpen) {
-      setIsLoadingSlots(true);
-      fetch('/api/calcom/available-slots')
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success && data.slots && data.slots.length > 0) {
-            setDaysList(data.slots);
-            setSlotsSource(data.source);
-            if (data.source === 'calcom_v2') {
-              setIsCalcomSynced(true);
+  // Sincronização automática contínua de horários com o Cal.com
+  const fetchAvailableSlots = async (daysAhead: number = 30) => {
+    setIsLoadingSlots(true);
+    try {
+      const res = await fetch(`/api/calcom/available-slots?daysAhead=${daysAhead}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.slots) && data.slots.length > 0) {
+          setDaysList(data.slots);
+          setSlotsSource(data.source);
+          if (data.source === 'calcom_v2') {
+            setIsCalcomSynced(true);
+          }
+          // Garante que a data e o horário selecionados sejam os primeiros válidos da agenda oficial
+          const hasCurrent = data.slots.some((s: any) => s.date === selectedDate);
+          if (!selectedDate || !hasCurrent) {
+            const firstValid = data.slots.find((s: any) => s.timeSlots && s.timeSlots.length > 0) || data.slots[0];
+            if (firstValid) {
+              setSelectedDate(firstValid.date);
+              const firstSlot = firstValid.timeSlots[0] || '14:00';
+              setSelectedTime(firstSlot);
+              setFormData((prev) => ({
+                ...prev,
+                selectedDate: firstValid.date,
+                selectedTime: firstSlot,
+              }));
             }
           }
-        })
-        .catch(() => {})
-        .finally(() => setIsLoadingSlots(false));
+        }
+      }
+    } catch (err) {
+      console.warn('Erro ao consultar agenda ao vivo do Cal.com:', err);
+    } finally {
+      setIsLoadingSlots(false);
+    }
+  };
+
+  // Sincronização automática em tempo real ao abrir o modal e a cada 30 segundos
+  useEffect(() => {
+    if (isOpen) {
+      fetchAvailableSlots(30);
+      const autoSyncInterval = setInterval(() => {
+        fetchAvailableSlots(30);
+      }, 30000);
+      return () => clearInterval(autoSyncInterval);
     }
   }, [isOpen]);
-
-  useEffect(() => {
-    if (isOpen && daysList[selectedDayIndex]) {
-      setFormData((prev) => ({
-        ...prev,
-        selectedDate: daysList[selectedDayIndex].date,
-        selectedTime: selectedTime,
-      }));
-    }
-  }, [isOpen, selectedDayIndex, selectedTime, daysList]);
 
   // Countdown timer para expiração do PIX (15 minutos)
   useEffect(() => {
@@ -320,22 +344,82 @@ export const BookingFunnelModal: React.FC<BookingFunnelModalProps> = ({ isOpen, 
     };
   }, [step, paymentId, meetUrl]);
 
-  if (!isOpen) return null;
+  // Agrupa os dias com vagas disponíveis em semanas de atendimento do calendário
+  const weekChunks = React.useMemo(() => {
+    const validDays = (daysList || []).filter((d) => d && d.timeSlots && d.timeSlots.length > 0);
+    if (validDays.length === 0) return [];
 
-  const currentDay = daysList[selectedDayIndex] || daysList[0] || WEEK_AVAILABLE_DAYS[0];
+    const chunks: Array<{ label: string; rangeText: string; days: typeof daysList }> = [];
+    let currentBlock: typeof daysList = [];
 
-  const handleSelectDay = (idx: number) => {
-    setSelectedDayIndex(idx);
-    const day = daysList[idx] || WEEK_AVAILABLE_DAYS[idx];
-    if (day) {
-      const firstSlot = day.timeSlots[0] || '09:00';
-      setSelectedTime(firstSlot);
-      setFormData((prev) => ({
-        ...prev,
-        selectedDate: day.date,
-        selectedTime: firstSlot,
-      }));
+    for (let i = 0; i < validDays.length; i++) {
+      const day = validDays[i];
+      if (currentBlock.length === 0) {
+        currentBlock.push(day);
+      } else {
+        const lastDay = currentBlock[currentBlock.length - 1];
+        const [y1, m1, d1] = lastDay.date.split('-').map(Number);
+        const [y2, m2, d2] = day.date.split('-').map(Number);
+        const diffDays = (new Date(y2, m2 - 1, d2).getTime() - new Date(y1, m1 - 1, d1).getTime()) / (1000 * 60 * 60 * 24);
+
+        if (diffDays > 2 || currentBlock.length >= 5) {
+          const first = currentBlock[0];
+          const last = currentBlock[currentBlock.length - 1];
+          const weekNum = chunks.length + 1;
+          chunks.push({
+            label: weekNum === 1 ? 'Primeira Semana Disponível' : `Semana ${weekNum}`,
+            rangeText: `${first.dayNumber} ${first.monthName} a ${last.dayNumber} ${last.monthName}`,
+            days: currentBlock,
+          });
+          currentBlock = [day];
+        } else {
+          currentBlock.push(day);
+        }
+      }
     }
+
+    if (currentBlock.length > 0) {
+      const first = currentBlock[0];
+      const last = currentBlock[currentBlock.length - 1];
+      const weekNum = chunks.length + 1;
+      chunks.push({
+        label: weekNum === 1 ? 'Primeira Semana Disponível' : `Semana ${weekNum}`,
+        rangeText: `${first.dayNumber} ${first.monthName} a ${last.dayNumber} ${last.monthName}`,
+        days: currentBlock,
+      });
+    }
+
+    return chunks;
+  }, [daysList]);
+
+  // Lista de dias exibidos conforme o modo ('Esta Semana' vs 'Próximos 30 Dias')
+  const displayedDays = React.useMemo(() => {
+    if (viewMode === 'week') {
+      return weekChunks[0]?.days || daysList.filter((d) => d.timeSlots && d.timeSlots.length > 0);
+    }
+    const currentChunk = weekChunks[selectedWeekIndex] || weekChunks[0];
+    return currentChunk ? currentChunk.days : daysList.filter((d) => d.timeSlots && d.timeSlots.length > 0);
+  }, [viewMode, weekChunks, selectedWeekIndex, daysList]);
+
+  // Dia ativo selecionado pelo paciente
+  const currentDay = React.useMemo(() => {
+    return (
+      daysList.find((d) => d.date === selectedDate) ||
+      displayedDays[0] ||
+      daysList[0] ||
+      WEEK_AVAILABLE_DAYS[0]
+    );
+  }, [daysList, selectedDate, displayedDays]);
+
+  const handleSelectDay = (day: typeof daysList[0]) => {
+    setSelectedDate(day.date);
+    const firstSlot = day.timeSlots[0] || '09:00';
+    setSelectedTime(firstSlot);
+    setFormData((prev) => ({
+      ...prev,
+      selectedDate: day.date,
+      selectedTime: firstSlot,
+    }));
   };
 
   const handleSelectTime = (time: string) => {
@@ -514,7 +598,7 @@ export const BookingFunnelModal: React.FC<BookingFunnelModalProps> = ({ isOpen, 
 
 Seu pagamento de R$ 79,00 via PIX foi confirmado com sucesso e a sua consulta de *Nutrição Social* já está 100% garantida na minha agenda:
 
-📅 *Data:* ${displayDate} (${currentDay.dayOfWeek}-feira)
+📅 *Data:* ${displayDate} (${currentDay?.dayOfWeek || 'Segunda'}-feira)
 ⏰ *Horário:* ${formData.selectedTime} (Horário de Brasília)
 💻 *Link da nossa videochamada no Google Meet:*
 ${meetUrl}
@@ -527,6 +611,8 @@ ${meetUrl}
 Estou muito animada para te conhecer e montar um plano alimentar realista e gostoso para você!
 
 Qualquer dúvida, pode responder direto a esta mensagem ou pelo e-mail nutricionistasabrinaamorim@gmail.com. Até breve! 💚`;
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/65 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6">
@@ -559,112 +645,277 @@ Qualquer dúvida, pode responder direto a esta mensagem ou pelo e-mail nutricion
           </button>
         </div>
 
-        {/* STEP 1: CALENDAR SELECTION (Horários Disponíveis da Semana) */}
+        {/* STEP 1: CALENDAR SELECTION (Horários Disponíveis da Semana & Opção 30 Dias Cal.com) */}
         {step === 'calendar' && (
           <div className="p-4 sm:p-6 space-y-5">
-            {/* Header: Title and subtitle */}
+            {/* Header: Title and subtitle + Cal.com Live Sync Bar */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-neutral-200">
               <div>
                 <h4 className="text-base sm:text-lg font-bold text-emerald-950 flex items-center gap-2">
                   <Calendar className="w-5 h-5 text-emerald-700" />
-                  <span>Horários Disponíveis Desta Semana</span>
+                  <span>Escolha a Data e Horário da sua Consulta</span>
                 </h4>
                 <p className="text-xs text-neutral-500 mt-0.5">
-                  Selecione o melhor dia e horário para a sua consulta individual online com a Drª Sabrina Vidal.
+                  Consulta individual de Nutrição Social com a Drª Sabrina Vidal (50 min via Google Meet).
                 </p>
               </div>
 
-              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-800 rounded-xl border border-emerald-200 text-xs font-semibold shrink-0">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>
-                  {isLoadingSlots
-                    ? 'Consultando Cal.com...'
-                    : slotsSource === 'calcom_v2'
-                    ? '✓ Agenda Cal.com v2 Sincronizada'
-                    : 'Grade Oficial da Clínica · Dra. Sabrina'}
-                </span>
+              {/* Status de Sincronização Automática com a Agenda do Cal.com */}
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-800 rounded-xl border border-emerald-200 text-xs font-semibold shrink-0">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>
+                    {isLoadingSlots
+                      ? 'Sincronizando com Cal.com...'
+                      : slotsSource === 'calcom_v2'
+                      ? '✓ Sincronizado automaticamente com Cal.com'
+                      : 'Grade Oficial da Clínica · Dra. Sabrina'}
+                  </span>
+                </div>
               </div>
             </div>
 
-            {/* Day Selector Ribbon (Segunda a Sábado da semana) */}
+            {/* SELETOR DE MODO: 'Esta Semana' vs 'Próximos 30 Dias' */}
+            <div className="bg-neutral-100 p-1 rounded-2xl flex flex-col sm:flex-row gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setViewMode('week');
+                  setSelectedWeekIndex(0);
+                  const first = weekChunks[0]?.days[0] || daysList[0];
+                  if (first) handleSelectDay(first);
+                }}
+                className={`flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  viewMode === 'week'
+                    ? 'bg-emerald-700 text-white shadow-sm ring-1 ring-emerald-800'
+                    : 'text-neutral-600 hover:text-emerald-900 hover:bg-white/60'
+                }`}
+              >
+                <Calendar className="w-4 h-4" />
+                <span>Esta Semana</span>
+                <span
+                  className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
+                    viewMode === 'week'
+                      ? 'bg-emerald-800 text-emerald-100'
+                      : 'bg-neutral-200 text-neutral-600'
+                  }`}
+                >
+                  {weekChunks[0] ? weekChunks[0].rangeText : 'Próximos 7 dias'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setViewMode('30days');
+                }}
+                className={`flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  viewMode === '30days'
+                    ? 'bg-emerald-700 text-white shadow-sm ring-1 ring-emerald-800'
+                    : 'text-neutral-600 hover:text-emerald-900 hover:bg-white/60'
+                }`}
+              >
+                <CalendarDays className="w-4 h-4" />
+                <span>Ver Próximos 30 Dias</span>
+                <span
+                  className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
+                    viewMode === '30days'
+                      ? 'bg-emerald-800 text-emerald-100'
+                      : 'bg-emerald-100 text-emerald-800'
+                  }`}
+                >
+                  {daysList.length} dias disponíveis
+                </span>
+              </button>
+            </div>
+
+            {/* BARRA DE NAVEGAÇÃO DE SEMANAS (Quando o modo 'Próximos 30 Dias' estiver ativo) */}
+            {viewMode === '30days' && weekChunks.length > 1 && (
+              <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-2xl p-3 space-y-2">
+                <div className="flex items-center justify-between text-xs font-semibold text-emerald-950">
+                  <span className="flex items-center gap-1.5">
+                    <CalendarDays className="w-4 h-4 text-emerald-700" />
+                    <span>Navegue pelas semanas dos próximos 30 dias:</span>
+                  </span>
+                  <span className="text-[11px] text-emerald-800 font-normal">
+                    Semana {selectedWeekIndex + 1} de {weekChunks.length}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={selectedWeekIndex === 0}
+                    onClick={() => {
+                      const newIdx = Math.max(0, selectedWeekIndex - 1);
+                      setSelectedWeekIndex(newIdx);
+                      const firstDay = weekChunks[newIdx]?.days[0];
+                      if (firstDay) handleSelectDay(firstDay);
+                    }}
+                    className="p-2 rounded-xl border border-emerald-300 bg-white hover:bg-emerald-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-emerald-900 cursor-pointer shrink-0"
+                    title="Semana Anterior"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+
+                  <div className="flex-1 flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-thin">
+                    {weekChunks.map((chunk, idx) => {
+                      const isActive = selectedWeekIndex === idx;
+                      return (
+                        <button
+                          key={chunk.label + idx}
+                          type="button"
+                          onClick={() => {
+                            setSelectedWeekIndex(idx);
+                            const firstDay = chunk.days[0];
+                            if (firstDay) handleSelectDay(firstDay);
+                          }}
+                          className={`flex-1 min-w-[125px] sm:min-w-[140px] px-2.5 py-2 rounded-xl text-left border transition-all cursor-pointer ${
+                            isActive
+                              ? 'bg-emerald-800 border-emerald-800 text-white shadow-xs font-bold'
+                              : 'bg-white border-emerald-200 text-neutral-700 hover:border-emerald-400 hover:bg-emerald-50'
+                          }`}
+                        >
+                          <div className="text-[11px] font-bold leading-tight">{chunk.label}</div>
+                          <div className={`text-[10px] mt-0.5 ${isActive ? 'text-emerald-200' : 'text-neutral-500'}`}>
+                            {chunk.rangeText}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={selectedWeekIndex >= weekChunks.length - 1}
+                    onClick={() => {
+                      const newIdx = Math.min(weekChunks.length - 1, selectedWeekIndex + 1);
+                      setSelectedWeekIndex(newIdx);
+                      const firstDay = weekChunks[newIdx]?.days[0];
+                      if (firstDay) handleSelectDay(firstDay);
+                    }}
+                    className="p-2 rounded-xl border border-emerald-300 bg-white hover:bg-emerald-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-emerald-900 cursor-pointer shrink-0"
+                    title="Próxima Semana"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* SELEÇÃO DO DIA: Apenas os dias com horários disponíveis */}
             <div className="space-y-2">
               <div className="text-xs font-semibold text-neutral-700 flex items-center justify-between">
-                <span>1. Escolha o dia da consulta:</span>
-                <span className="text-[11px] text-emerald-700 font-medium">Consulta Online · 50 min</span>
+                <span className="flex items-center gap-1.5">
+                  <span>1. Escolha o dia da consulta:</span>
+                  <span className="text-neutral-400 font-normal">
+                    ({displayedDays.length} {displayedDays.length === 1 ? 'dia disponível' : 'dias com horários livres'})
+                  </span>
+                </span>
+                <span className="text-[11px] text-emerald-700 font-medium hidden sm:inline">
+                  {viewMode === 'week' ? 'Grade Desta Semana' : 'Grade dos Próximos 30 Dias'}
+                </span>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5">
-                {daysList.map((day, idx) => {
-                  const isSelected = selectedDayIndex === idx;
-                  return (
-                    <button
-                      key={day.date}
-                      type="button"
-                      onClick={() => handleSelectDay(idx)}
-                      className={`p-3 rounded-xl border text-center transition-all cursor-pointer ${
-                        isSelected
-                          ? 'border-emerald-700 bg-emerald-50 text-emerald-950 font-bold shadow-xs ring-2 ring-emerald-600/30'
-                          : 'border-neutral-200 bg-white hover:border-emerald-300 text-neutral-700'
-                      }`}
-                    >
-                      <div className="text-[11px] uppercase tracking-wider text-neutral-500 font-medium">
-                        {day.dayOfWeek}
-                      </div>
-                      <div className="text-xl font-bold my-0.5 tabular-nums">
-                        {day.dayNumber}
-                      </div>
-                      <div className="text-[11px] text-neutral-400">
-                        {day.monthName}
-                      </div>
-                      <div className="text-[10px] text-emerald-700 font-semibold mt-1">
-                        {day.slotsRemaining} {day.slotsRemaining === 1 ? 'vaga livre' : 'vagas livres'}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+              {displayedDays.length === 0 ? (
+                <div className="p-6 text-center bg-neutral-50 border border-neutral-200 rounded-2xl">
+                  <p className="text-xs text-neutral-500">Nenhum horário vago restante nesta semana.</p>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('30days')}
+                    className="mt-2 text-xs font-bold text-emerald-700 underline cursor-pointer"
+                  >
+                    Ver próximas semanas disponíveis nos próximos 30 dias →
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5">
+                  {displayedDays.map((day) => {
+                    const isSelected = selectedDate === day.date;
+                    return (
+                      <button
+                        key={day.date}
+                        type="button"
+                        onClick={() => handleSelectDay(day)}
+                        className={`p-3 rounded-xl border text-center transition-all cursor-pointer ${
+                          isSelected
+                            ? 'border-emerald-700 bg-emerald-50 text-emerald-950 font-bold shadow-xs ring-2 ring-emerald-600/30'
+                            : 'border-neutral-200 bg-white hover:border-emerald-300 text-neutral-700'
+                        }`}
+                      >
+                        <div className="text-[11px] uppercase tracking-wider text-neutral-500 font-medium">
+                          {day.dayOfWeek}
+                        </div>
+                        <div className="text-xl font-bold my-0.5 tabular-nums">
+                          {day.dayNumber}
+                        </div>
+                        <div className="text-[11px] text-neutral-400">
+                          {day.monthName}
+                        </div>
+                        <div className="text-[10px] text-emerald-700 font-semibold mt-1">
+                          {day.slotsRemaining} {day.slotsRemaining === 1 ? 'vaga livre' : 'vagas livres'}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
-            {/* Time Slot Selector */}
+            {/* SELEÇÃO DO HORÁRIO: Exibe apenas os horários livres daquele dia */}
             <div className="pt-2 space-y-3">
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-emerald-700" />
-                <h5 className="text-sm font-bold text-emerald-950">
-                  2. Horários livres para {currentDay.dayOfWeek}, {currentDay.dayNumber} de {currentDay.monthName}:
-                </h5>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-emerald-700" />
+                  <h5 className="text-sm font-bold text-emerald-950">
+                    2. Horários livres para {currentDay?.dayOfWeek || 'Dia Selecionado'}, {currentDay?.dayNumber || ''} de {currentDay?.monthName || ''}:
+                  </h5>
+                </div>
+                <span className="text-xs text-neutral-500">
+                  {(currentDay?.timeSlots || []).length} {(currentDay?.timeSlots || []).length === 1 ? 'horário disponível' : 'horários disponíveis'}
+                </span>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
-                {currentDay.timeSlots.map((time) => {
-                  const isSelected = selectedTime === time;
-                  return (
-                    <button
-                      key={time}
-                      type="button"
-                      onClick={() => handleSelectTime(time)}
-                      className={`py-3 px-4 rounded-xl text-sm font-medium border transition-all cursor-pointer tabular-nums text-center flex items-center justify-center gap-2 ${
-                        isSelected
-                          ? 'bg-emerald-700 border-emerald-700 text-white font-bold shadow-md scale-[1.02]'
-                          : 'bg-neutral-50 border-neutral-200 text-neutral-800 hover:border-emerald-400 hover:bg-emerald-50/50'
-                      }`}
-                    >
-                      <Clock className={`w-3.5 h-3.5 ${isSelected ? 'text-emerald-200' : 'text-neutral-400'}`} />
-                      <span>{time}</span>
-                    </button>
-                  );
-                })}
-              </div>
+              {(!currentDay?.timeSlots || currentDay.timeSlots.length === 0) ? (
+                <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs text-center">
+                  Todos os horários desta data já foram preenchidos. Por favor, escolha outro dia acima.
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5">
+                  {(currentDay?.timeSlots || []).map((time) => {
+                    const isSelected = selectedTime === time;
+                    return (
+                      <button
+                        key={time}
+                        type="button"
+                        onClick={() => handleSelectTime(time)}
+                        className={`py-3 px-4 rounded-xl text-sm font-medium border transition-all cursor-pointer tabular-nums text-center flex items-center justify-center gap-2 ${
+                          isSelected
+                            ? 'bg-emerald-700 border-emerald-700 text-white font-bold shadow-md scale-[1.02]'
+                            : 'bg-neutral-50 border-neutral-200 text-neutral-800 hover:border-emerald-400 hover:bg-emerald-50/50'
+                        }`}
+                      >
+                        <Clock className={`w-3.5 h-3.5 ${isSelected ? 'text-emerald-200' : 'text-neutral-400'}`} />
+                        <span>{time}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
-            {/* Selected Summary & Advance Button */}
+            {/* RESUMO DO HORÁRIO SELECIONADO & BOTÃO AVANÇAR */}
             <div className="p-4 rounded-xl bg-neutral-50 border border-neutral-200 flex flex-col sm:flex-row items-center justify-between gap-4 mt-2">
               <div className="space-y-0.5 text-center sm:text-left">
                 <div className="text-xs text-neutral-500 font-medium">Horário selecionado:</div>
                 <div className="text-sm sm:text-base font-bold text-emerald-950 flex items-center justify-center sm:justify-start gap-1.5">
-                  <CalendarCheck className="w-4 h-4 text-emerald-700" />
+                  <CalendarCheck className="w-4 h-4 text-emerald-700 shrink-0" />
                   <span>
-                    {currentDay.dayOfWeek}, {currentDay.dayNumber} de {currentDay.monthName} às {selectedTime}
+                    {currentDay?.dayOfWeek || 'Data'}, {currentDay?.dayNumber || ''} de {currentDay?.monthName || ''} às {selectedTime}
                   </span>
+                </div>
+                <div className="text-[11px] text-emerald-700">
+                  ✓ Horário verificado na agenda Cal.com · 15 min de pré-reserva garantida para pagamento
                 </div>
               </div>
 

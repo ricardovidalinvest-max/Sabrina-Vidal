@@ -173,10 +173,17 @@ class BookingAsyncWorker {
       return;
     }
 
-    // b) Atualizar banco para PAID
-    const updatedRecord = await dbRepository.updateStatus(paymentId, 'PAID');
-    const calcomBookingId = updatedRecord?.calcom_booking_id || payment.externalReference;
+    // b) Atualizar banco para PAID com fallback para externalReference
+    let updatedRecord = await dbRepository.updateStatus(paymentId, 'PAID');
+    if (!updatedRecord && payment.externalReference) {
+      console.log(`[Worker:Asaas] Atualizando registro usando externalReference (${payment.externalReference})...`);
+      updatedRecord = await dbRepository.updateStatus(payment.externalReference, 'PAID');
+      if (updatedRecord) {
+        await dbRepository.updateAsaasPaymentId(payment.externalReference, paymentId);
+      }
+    }
 
+    const calcomBookingId = updatedRecord?.calcom_booking_id || payment.externalReference;
     console.log(`[Worker:Asaas] Status atualizado para PAID no banco (Agendamento: ${calcomBookingId}).`);
 
     // c) Chamar API do Cal.com alterando o status de PENDING para ACCEPTED
@@ -200,7 +207,7 @@ class BookingAsyncWorker {
       });
       console.log(`[Worker:Asaas] WhatsApp de confirmação enviado para ${targetPhone}.`);
     } else {
-      console.warn(`[Worker:Asaas:WARN] Telefone não encontrado para o pagamento ${paymentId}.`);
+      console.warn(`[Worker:Asaas:WARN] Telefone não encontrado para o pagamento ${paymentId} ou agendamento ${calcomBookingId}.`);
     }
   }
 }

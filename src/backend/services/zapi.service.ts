@@ -74,9 +74,12 @@ export class ZApiService {
       }
     }
 
+    return clean;
+  }
+
   /**
    * Obtém variantes do número de telefone brasileiro (com e sem o 9º dígito),
-   * para resolver incompatibilidade do WhatsApp em DDDs como 62, 11, etc.
+   * essencial para compatibilidade com o WhatsApp em DDDs como 62 (Goiás), 11, etc.
    */
   getPhoneVariants(rawPhone: string): string[] {
     let clean = (rawPhone || '').replace(/\D/g, '');
@@ -90,7 +93,7 @@ export class ZApiService {
     const variants: string[] = [clean];
 
     // Se tiver 13 dígitos: 55 + DD + 9XXXXXXXX (ex: 5562993431970)
-    // Alternativa: 556293431970 (remove o primeiro 9 após o DDD)
+    // Variante com 8 dígitos: 556293431970 (remove o primeiro 9 após o DDD)
     if (clean.length === 13 && clean.startsWith('55')) {
       const ddd = clean.substring(2, 4);
       const rest = clean.substring(5);
@@ -100,7 +103,7 @@ export class ZApiService {
     }
 
     // Se tiver 12 dígitos: 55 + DD + XXXXXXXX (ex: 556293431970)
-    // Alternativa: 5562993431970 (insere o 9 após o DDD)
+    // Variante com 9 dígitos: 5562993431970 (insere o 9 após o DDD)
     if (clean.length === 12 && clean.startsWith('55')) {
       const ddd = clean.substring(2, 4);
       const rest = clean.substring(4);
@@ -133,18 +136,33 @@ export class ZApiService {
 
     try {
       const url = `${this.baseUrl}/instances/${instId}/token/${tok}/status`;
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
+      const makeHeaders = (includeClientToken: boolean) => {
+        const h: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        if (includeClientToken && clTok) {
+          h['Client-Token'] = clTok;
+        }
+        return h;
       };
-      if (clTok) {
-        headers['Client-Token'] = clTok;
-      }
 
       console.log(`[ZApiService] Verificando status da instância Z-API: ${instId}...`);
-      const response = await fetch(url, { method: 'GET', headers });
-      const text = await response.text();
+      let response = await fetch(url, { method: 'GET', headers: makeHeaders(Boolean(clTok)) });
+      let text = await response.text();
       let data: any = {};
       try { data = JSON.parse(text); } catch { data = { raw: text }; }
+
+      // Se falhar com 401 ou 403 e foi enviado Client-Token, tenta sem Client-Token
+      if ((response.status === 401 || response.status === 403) && clTok) {
+        console.log(`[ZApiService] Status retornou ${response.status} com Client-Token. Testando sem Client-Token...`);
+        const fallbackRes = await fetch(url, { method: 'GET', headers: makeHeaders(false) });
+        if (fallbackRes.ok) {
+          response = fallbackRes;
+          text = await fallbackRes.text();
+          try { data = JSON.parse(text); } catch { data = { raw: text }; }
+          console.log(`[ZApiService] Instância aceitou conexão sem Client-Token!`);
+        }
+      }
       console.log(`[ZApiService:STATUS_RAW] Resposta status Z-API HTTP ${response.status}:`, JSON.stringify(data));
 
       if (!response.ok) {
@@ -291,6 +309,7 @@ export class ZApiService {
 
   /**
    * Verifica se o número informado possui conta ativa no WhatsApp na base da Z-API.
+   * Testa automaticamente variantes de 8 e 9 dígitos (essencial para Goiás DDD 62 e contas corporativas).
    */
   async checkPhoneExists(
     rawPhone: string,
@@ -303,66 +322,62 @@ export class ZApiService {
     const instId = (overrides?.instanceId || this.instanceId || '').trim();
     const tok = (overrides?.token || this.token || '').trim();
     const clTok = (overrides?.clientToken || this.clientToken || '').trim();
-    const phone = this.formatPhoneNumber(rawPhone);
 
     if (!instId || !tok) {
       return {
         success: false,
         exists: false,
-        formattedPhone: phone,
+        formattedPhone: rawPhone,
         message: 'Preencha o ID da Instância e o Token da Z-API.',
       };
     }
 
-    try {
-      const url = `${this.baseUrl}/instances/${instId}/token/${tok}/phone-exists/${phone}`;
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (clTok) {
-        headers['Client-Token'] = clTok;
-      }
+    const variants = this.getPhoneVariants(rawPhone);
+    const makeHeaders = (includeClientToken: boolean) => {
+      const h: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (includeClientToken && clTok) h['Client-Token'] = clTok;
+      return h;
+    };
 
-      console.log(`[ZApiService] Verificando existência do telefone ${phone} na Z-API...`);
-      const response = await fetch(url, { method: 'GET', headers });
-      const text = await response.text();
-      let data: any = {};
+    for (const testPhone of variants) {
       try {
-        data = JSON.parse(text);
-      } catch {
-        data = { raw: text };
-      }
+        const url = `${this.baseUrl}/instances/${instId}/token/${tok}/phone-exists/${testPhone}`;
+        console.log(`[ZApiService] Verificando existência do telefone ${testPhone} na Z-API...`);
+        let response = await fetch(url, { method: 'GET', headers: makeHeaders(Boolean(clTok)) });
 
-      if (!response.ok) {
-        return {
-          success: false,
-          exists: false,
-          formattedPhone: phone,
-          message: `Falha ao verificar número (Status ${response.status}): ${data.error || text}`,
-        };
-      }
+        if ((response.status === 401 || response.status === 403) && clTok) {
+          response = await fetch(url, { method: 'GET', headers: makeHeaders(false) });
+        }
 
-      const exists = Boolean(data.exists);
-      return {
-        success: true,
-        exists,
-        formattedPhone: data.phone || phone,
-        message: exists
-          ? `✓ O número ${data.phone || phone} possui WhatsApp ativo!`
-          : `⚠️ O número ${phone} NÃO foi localizado no WhatsApp. Verifique se o DDD está correto.`,
-      };
-    } catch (error: any) {
-      return {
-        success: false,
-        exists: false,
-        formattedPhone: phone,
-        message: `Erro ao verificar número: ${error.message}`,
-      };
+        const text = await response.text();
+        let data: any = {};
+        try { data = JSON.parse(text); } catch { data = { raw: text }; }
+
+        if (response.ok && data.exists) {
+          const isAlt = testPhone !== variants[0];
+          return {
+            success: true,
+            exists: true,
+            formattedPhone: data.phone || testPhone,
+            message: `✓ O número ${data.phone || testPhone} possui WhatsApp ativo${isAlt ? ' (identificado no formato com 8 dígitos)' : ''}!`,
+          };
+        }
+      } catch (err: any) {
+        console.warn(`[ZApiService:WARN] Falha ao checar telefone ${testPhone}:`, err.message);
+      }
     }
+
+    const primary = variants[0] || rawPhone;
+    return {
+      success: true,
+      exists: false,
+      formattedPhone: primary,
+      message: `⚠️ O número ${primary} não foi localizado no WhatsApp (testados formatos com 8 e 9 dígitos). Verifique o DDD.`,
+    };
   }
 
   /**
-   * Envia uma mensagem de texto simples via Z-API com validação e log detalhado.
+   * Envia uma mensagem de texto simples via Z-API com validação, fallback de variantes brasileiras e logs detalhados.
    */
   async sendTextMessage(
     rawPhone: string,
@@ -376,7 +391,6 @@ export class ZApiService {
     const instId = (overrides?.instanceId || this.instanceId || '').trim();
     const tok = (overrides?.token || this.token || '').trim();
     const clTok = (overrides?.clientToken || this.clientToken || '').trim();
-    const phone = this.formatPhoneNumber(rawPhone);
 
     if (!instId || !tok || instId === 'YOUR_INSTANCE_ID') {
       console.warn('[ZApiService] Credenciais Z-API ausentes. Configure o ID da Instância e o Token.');
@@ -386,115 +400,118 @@ export class ZApiService {
       };
     }
 
-    if (!phone || phone.length < 10) {
+    const variants = this.getPhoneVariants(rawPhone);
+    if (!variants.length || variants[0].length < 10) {
       return {
         success: false,
         error: `Telefone inválido (${rawPhone}). Digite o número com DDD (ex: 11999998888 ou 5511999998888).`,
       };
     }
 
-    try {
-      console.log(`[ZApiService] Disparando WhatsApp para ${phone} via instância ${instId}...`);
-      const url = `${this.baseUrl}/instances/${instId}/token/${tok}/send-text`;
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
+    const url = `${this.baseUrl}/instances/${instId}/token/${tok}/send-text`;
+    const makeHeaders = (includeClientToken: boolean) => {
+      const h: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (includeClientToken && clTok) h['Client-Token'] = clTok;
+      return h;
+    };
 
-      if (clTok) {
-        headers['Client-Token'] = clTok;
-      }
+    let lastError = '';
+    let lastResData: any = null;
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          phone: phone,
-          message: message,
-        }),
-      });
-
-      const responseText = await response.text();
-      let resData: any = {};
+    // Itera pelas variantes de telefone (ex: 13 dígitos 5562993431970 e 12 dígitos 556293431970)
+    for (let i = 0; i < variants.length; i++) {
+      const currentPhone = variants[i];
       try {
-        resData = JSON.parse(responseText);
-      } catch {
-        resData = { raw: responseText };
-      }
+        console.log(`[ZApiService] Disparando WhatsApp para ${currentPhone} (Tentativa ${i + 1}/${variants.length}) via instância ${instId}...`);
 
-      if (!response.ok) {
-        const errorDetail = resData.error || resData.message || responseText;
-        console.error(`[ZApiService:ERROR] Falha Z-API (Status ${response.status}):`, errorDetail);
-        
-        let friendly = `Falha no envio Z-API (Status ${response.status}): ${errorDetail}`;
-        if (response.status === 401) {
-          friendly = `Falha de autenticação (HTTP 401): ${errorDetail}. Verifique se o Token da Instância e o Client-Token (token de segurança da conta) estão corretos.`;
-        } else if (response.status === 400 && String(errorDetail).toLowerCase().includes('not connected')) {
-          friendly = `Instância desconectada: ${errorDetail}. Clique no botão 'Escanear QR Code' para parear seu WhatsApp.`;
+        let response = await fetch(url, {
+          method: 'POST',
+          headers: makeHeaders(Boolean(clTok)),
+          body: JSON.stringify({
+            phone: currentPhone,
+            message: message,
+          }),
+        });
+
+        // Se der 401/403 e tiver Client-Token, tenta sem Client-Token
+        if ((response.status === 401 || response.status === 403) && clTok) {
+          console.log(`[ZApiService] Envio retornou ${response.status} com Client-Token. Tentando sem Client-Token...`);
+          response = await fetch(url, {
+            method: 'POST',
+            headers: makeHeaders(false),
+            body: JSON.stringify({
+              phone: currentPhone,
+              message: message,
+            }),
+          });
         }
 
-        return {
-          success: false,
-          error: friendly,
-          rawResponse: resData,
-        };
-      }
+        const responseText = await response.text();
+        let resData: any = {};
+        try { resData = JSON.parse(responseText); } catch { resData = { raw: responseText }; }
+        lastResData = resData;
 
-      // Validação caso Z-API responda HTTP 200 porém com erro no corpo (ex: NOT_FOUND)
-      if (resData.error && String(resData.error).trim().length > 0) {
-        const errStr = String(resData.error).toUpperCase();
-        console.warn(`[ZApiService:WARN] Z-API respondeu 200 com erro no payload:`, resData.error);
+        // Verifica se houve erro explícito no corpo (ex: NOT_FOUND)
+        const bodyError = resData.error || resData.message;
+        const errUpper = String(bodyError || '').toUpperCase();
+        const isNotFound = errUpper.includes('NOT_FOUND') || errUpper.includes('NOT FOUND') || errUpper.includes('NOT EXISTS');
 
-        // Se for erro NOT_FOUND (número não localizado no WhatsApp), tenta automaticamente a variante (sem ou com o 9º dígito)
-        const variants = this.getPhoneVariants(rawPhone);
-        if ((errStr.includes('NOT_FOUND') || errStr.includes('NOT FOUND')) && variants.length > 1) {
-          const altPhone = variants.find((v) => v !== phone);
-          if (altPhone) {
-            console.log(`[ZApiService:RETRY] Número ${phone} retornou NOT_FOUND. Retentando automaticamente com formato alternativo: ${altPhone}...`);
-            const retryRes = await fetch(url, {
-              method: 'POST',
-              headers,
-              body: JSON.stringify({
-                phone: altPhone,
-                message: message,
-              }),
-            });
-            const retryText = await retryRes.text();
-            let retryData: any = {};
-            try { retryData = JSON.parse(retryText); } catch { retryData = { raw: retryText }; }
+        if (!response.ok || isNotFound) {
+          lastError = bodyError || `Status HTTP ${response.status}`;
+          console.warn(`[ZApiService:WARN] Disparo para ${currentPhone} retornou erro: ${lastError}`);
 
-            if (retryRes.ok && (!retryData.error || !String(retryData.error).toUpperCase().includes('NOT_FOUND'))) {
-              const altMessageId = retryData.zaapId || retryData.messageId || retryData.id || 'OK';
-              console.log(`[ZApiService:SUCCESS] Mensagem entregue com sucesso via formato alternativo ${altPhone}! ID: ${altMessageId}`);
-              return {
-                success: true,
-                messageId: altMessageId,
-                rawResponse: retryData,
-              };
-            }
+          // Se for erro de número não encontrado e houver outra variante, continua o loop
+          if (isNotFound && i < variants.length - 1) {
+            console.log(`[ZApiService:RETRY] Número ${currentPhone} não localizado. Tentando variante alternativa: ${variants[i + 1]}...`);
+            continue;
           }
+
+          if (response.status === 401) {
+            return {
+              success: false,
+              error: `Falha de autenticação (HTTP 401). Verifique o Token da Instância e o Client-Token da Z-API.`,
+              rawResponse: resData,
+            };
+          }
+
+          if (response.status === 400 && String(bodyError).toLowerCase().includes('not connected')) {
+            return {
+              success: false,
+              error: `Instância desconectada. Clique em 'Escanear QR Code' para parear seu WhatsApp.`,
+              rawResponse: resData,
+            };
+          }
+
+          // Se tiver mais variantes, tenta a próxima
+          if (i < variants.length - 1) continue;
+
+          return {
+            success: false,
+            error: isNotFound
+              ? `O número ${currentPhone} não possui conta ativa no WhatsApp (testadas variantes com 8 e 9 dígitos).`
+              : `Z-API recusou a mensagem: ${lastError}`,
+            rawResponse: resData,
+          };
         }
 
+        const messageId = resData.zaapId || resData.messageId || resData.id || 'OK';
+        console.log(`[ZApiService:SUCCESS] Mensagem enviada com sucesso para ${currentPhone}! ID: ${messageId}`);
         return {
-          success: false,
-          error: `Z-API recusou a mensagem: ${resData.error}`,
+          success: true,
+          messageId,
           rawResponse: resData,
         };
+      } catch (error: any) {
+        console.error(`[ZApiService:FATAL] Exceção ao disparar para ${currentPhone}:`, error.message);
+        lastError = error.message;
       }
-
-      const messageId = resData.zaapId || resData.messageId || resData.id || 'OK';
-      console.log(`[ZApiService:SUCCESS] Mensagem enviada com sucesso para ${phone}. ID: ${messageId}`);
-      return {
-        success: true,
-        messageId,
-        rawResponse: resData,
-      };
-    } catch (error: any) {
-      console.error(`[ZApiService:FATAL] Erro ao disparar para ${phone}:`, error.message);
-      return {
-        success: false,
-        error: `Erro de conexão com Z-API: ${error.message}`,
-      };
     }
+
+    return {
+      success: false,
+      error: `Erro ao enviar mensagem via Z-API: ${lastError}`,
+      rawResponse: lastResData,
+    };
   }
 
   /**

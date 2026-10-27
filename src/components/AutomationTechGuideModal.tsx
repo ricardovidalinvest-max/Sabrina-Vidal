@@ -1668,9 +1668,7 @@ export const AutomationTechGuideModal: React.FC<TechGuideProps> = ({ isOpen, onC
                       <div
                         className={`p-2.5 rounded-lg text-[11px] border ${
                           zapiStatusRes.connected
-                            ? zapiStatusRes.smartphoneConnected === false
-                              ? 'bg-amber-950/60 text-amber-300 border-amber-700/60'
-                              : 'bg-emerald-950/60 text-emerald-300 border-emerald-700/60'
+                            ? 'bg-emerald-950/60 text-emerald-300 border-emerald-700/60'
                             : 'bg-rose-950/60 text-rose-300 border-rose-700/60'
                         }`}
                       >
@@ -1679,16 +1677,12 @@ export const AutomationTechGuideModal: React.FC<TechGuideProps> = ({ isOpen, onC
                             <span
                               className={`w-2 h-2 rounded-full ${
                                 zapiStatusRes.connected
-                                  ? zapiStatusRes.smartphoneConnected === false
-                                    ? 'bg-amber-400 animate-ping'
-                                    : 'bg-emerald-400 animate-pulse'
+                                  ? 'bg-emerald-400 animate-pulse'
                                   : 'bg-rose-400'
                               }`}
                             />
                             {zapiStatusRes.connected
-                              ? zapiStatusRes.smartphoneConnected === false
-                                ? 'WhatsApp Autenticado, mas Celular Offline'
-                                : 'WhatsApp Pareado & Conectado'
+                              ? 'WhatsApp Pareado & Conectado (Multi-Device Ativo)'
                               : 'WhatsApp Desconectado'}
                           </span>
                           {!zapiStatusRes.connected && (

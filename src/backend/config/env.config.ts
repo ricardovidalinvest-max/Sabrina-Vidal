@@ -19,6 +19,16 @@ export interface BackendConfig {
   adminPassword: string;
 }
 
+const sanitizeZapiBaseUrl = (raw?: string): string => {
+  if (!raw) return 'https://api.z-api.io';
+  try {
+    const u = new URL(raw);
+    return `${u.protocol}//${u.host}`;
+  } catch {
+    return 'https://api.z-api.io';
+  }
+};
+
 // Estado em memória inicializado com variáveis de ambiente ou padrões seguros
 const currentConfig: BackendConfig = {
   calcomApiKey: process.env.CALCOM_API_KEY || '',
@@ -33,7 +43,7 @@ const currentConfig: BackendConfig = {
   zapiInstanceId: process.env.ZAPI_INSTANCE_ID || '',
   zapiToken: process.env.ZAPI_TOKEN || '',
   zapiClientToken: process.env.ZAPI_CLIENT_TOKEN || '',
-  zapiBaseUrl: process.env.ZAPI_BASE_URL || 'https://api.z-api.io',
+  zapiBaseUrl: sanitizeZapiBaseUrl(process.env.ZAPI_BASE_URL),
 
   consultationPriceBrl: Number(process.env.CONSULTATION_PRICE_BRL) || 79.0,
   pixExpirationMinutes: Number(process.env.PIX_EXPIRATION_MINUTES) || 15,
@@ -64,7 +74,7 @@ export const updateLiveConfig = (newValues: Partial<BackendConfig>): BackendConf
   if (newValues.zapiInstanceId !== undefined && newValues.zapiInstanceId.trim().length > 0) currentConfig.zapiInstanceId = newValues.zapiInstanceId.trim();
   if (newValues.zapiToken !== undefined && newValues.zapiToken.trim().length > 0) currentConfig.zapiToken = newValues.zapiToken.trim();
   if (newValues.zapiClientToken !== undefined && newValues.zapiClientToken.trim().length > 0) currentConfig.zapiClientToken = newValues.zapiClientToken.trim();
-  if (newValues.zapiBaseUrl !== undefined && newValues.zapiBaseUrl.trim().length > 0) currentConfig.zapiBaseUrl = newValues.zapiBaseUrl.trim();
+  if (newValues.zapiBaseUrl !== undefined && newValues.zapiBaseUrl.trim().length > 0) currentConfig.zapiBaseUrl = sanitizeZapiBaseUrl(newValues.zapiBaseUrl.trim());
 
   if (newValues.consultationPriceBrl !== undefined) currentConfig.consultationPriceBrl = Number(newValues.consultationPriceBrl);
   if (newValues.pixExpirationMinutes !== undefined) currentConfig.pixExpirationMinutes = Number(newValues.pixExpirationMinutes);

@@ -11,6 +11,8 @@ export interface ZApiStatusResult {
   success: boolean;
   connected: boolean;
   smartphoneConnected?: boolean;
+  requiresClientToken?: boolean;
+  invalidClientToken?: boolean;
   message: string;
   sessionStatus?: string;
   error?: string;
@@ -30,13 +32,17 @@ export class ZApiService {
   }
 
   private get baseUrl(): string {
-    return getLiveConfig().zapiBaseUrl || process.env.ZAPI_BASE_URL || 'https://api.z-api.io';
+    const raw = getLiveConfig().zapiBaseUrl || process.env.ZAPI_BASE_URL || 'https://api.z-api.io';
+    try {
+      const u = new URL(raw);
+      return `${u.protocol}//${u.host}`;
+    } catch {
+      return 'https://api.z-api.io';
+    }
   }
 
   constructor() {}
 
-  /**
-   * Sanitiza e formata o telefone para o padrão internacional do WhatsApp (55DD9XXXXXXXX).
   /**
    * Sanitiza e formata o telefone para o padrão internacional do WhatsApp (55DD9XXXXXXXX).
    * Insere o 9º dígito se for número de celular no Brasil com 8 dígitos.
@@ -165,12 +171,42 @@ export class ZApiService {
       }
       console.log(`[ZApiService:STATUS_RAW] Resposta status Z-API HTTP ${response.status}:`, JSON.stringify(data));
 
+      const rawError = String(data.error || data.message || text || '').trim();
+      const rawErrorUpper = rawError.toUpperCase();
+
+      // Caso 1: Z-API exige o Client-Token (Segurança da conta ativada)
+      if (rawErrorUpper.includes('CLIENT-TOKEN IS NOT CONFIGURED') || rawErrorUpper.includes('CLIENT TOKEN IS NOT CONFIGURED')) {
+        console.warn('[ZApiService:WARN] Z-API exige o Client-Token de segurança da conta.');
+        return {
+          success: false,
+          connected: false,
+          requiresClientToken: true,
+          message: '🔐 Chave de Segurança da Conta exigida: O WhatsApp está conectado na sua instância Z-API, mas sua conta exige o Client-Token no cabeçalho das requisições. No painel da Z-API (app.z-api.io), vá em Segurança > Token de Segurança, copie o Client-Token e cole no campo "Client-Token da Conta" abaixo.',
+          error: 'CLIENT_TOKEN_REQUIRED',
+        };
+      }
+
+      // Caso 2: Client-Token inválido ou não autorizado
+      if (rawErrorUpper.includes('CLIENT-TOKEN NOT ALLOWED') || rawErrorUpper.includes('INVALID CLIENT-TOKEN')) {
+        console.warn('[ZApiService:WARN] Z-API rejeitou o Client-Token fornecido.');
+        return {
+          success: false,
+          connected: false,
+          invalidClientToken: true,
+          message: '⚠️ Client-Token não reconhecido: O Client-Token informado não foi aceito pela Z-API. Verifique se copiou a chave correta no painel da Z-API em Menu > Segurança.',
+          error: 'INVALID_CLIENT_TOKEN',
+        };
+      }
+
       if (!response.ok) {
         if (response.status === 401 || response.status === 403) {
           return {
             success: false,
             connected: false,
-            message: `Falha de autenticação na Z-API (HTTP ${response.status}): ${data.error || text}. Verifique se o Token da Instância e o Client-Token (token de segurança da conta) estão corretos.`,
+            requiresClientToken: !clTok,
+            message: !clTok
+              ? '🔐 Falha de autenticação: Esta instância da Z-API exige o Client-Token de segurança. Acesse Painel Z-API > Segurança e preencha o Client-Token abaixo.'
+              : `Falha de autenticação na Z-API (HTTP ${response.status}): ${data.error || text}. Verifique o Token da Instância e o Client-Token.`,
             error: data.error || text,
           };
         }
@@ -193,11 +229,12 @@ export class ZApiService {
       }
 
       // Detecção resiliente de conexão (suporta boolean, string, status de sessão e número conectado)
-      const isConnected = data.connected === true ||
+      const isConnected = (data.connected === true ||
                           String(data.connected).toLowerCase() === 'true' ||
                           String(data.status).toUpperCase() === 'CONNECTED' ||
                           String(data.sessionStatus).toUpperCase() === 'CONNECTED' ||
-                          Boolean(data.phone);
+                          Boolean(data.phone)) &&
+                          !rawErrorUpper.includes('NOT CONNECTED');
 
       const isSmartphoneConnected = data.smartphoneConnected !== undefined
         ? Boolean(data.smartphoneConnected)
@@ -210,7 +247,7 @@ export class ZApiService {
           smartphoneConnected: isSmartphoneConnected,
           message: isSmartphoneConnected
             ? '✓ Instância Z-API conectada e pronta para envio no WhatsApp!'
-            : '✓ WhatsApp Pareado e Ativo via Multi-Device (Celular em modo repouso/offline). Envio de mensagens liberado!',
+            : '✓ WhatsApp Pareado e Conectado (Multi-Device Ativo). Pronto para disparos!',
           sessionStatus: 'CONNECTED',
         };
       } else {
@@ -271,6 +308,14 @@ export class ZApiService {
 
       if (!response.ok) {
         const errDetail = data.error || data.message || text;
+        const errDetailUpper = String(errDetail).toUpperCase();
+        if (errDetailUpper.includes('CLIENT-TOKEN IS NOT CONFIGURED') || errDetailUpper.includes('CLIENT TOKEN IS NOT CONFIGURED')) {
+          return {
+            success: false,
+            message: '🔐 A Z-API exige o Client-Token de segurança da conta antes de gerar o QR Code. Copie o Client-Token em Z-API > Segurança e preencha o campo "Client-Token da Conta".',
+          };
+        }
+
         return {
           success: false,
           message: `Erro ao buscar QR Code na Z-API (Status ${response.status}): ${errDetail}`,
@@ -433,22 +478,29 @@ export class ZApiService {
           }),
         });
 
-        // Se der 401/403 e tiver Client-Token, tenta sem Client-Token
-        if ((response.status === 401 || response.status === 403) && clTok) {
-          console.log(`[ZApiService] Envio retornou ${response.status} com Client-Token. Tentando sem Client-Token...`);
-          response = await fetch(url, {
-            method: 'POST',
-            headers: makeHeaders(false),
-            body: JSON.stringify({
-              phone: currentPhone,
-              message: message,
-            }),
-          });
-        }
-
-        const responseText = await response.text();
+        let responseText = await response.text();
         let resData: any = {};
         try { resData = JSON.parse(responseText); } catch { resData = { raw: responseText }; }
+
+        // Se der 401/403 e tiver Client-Token, só usa sem Client-Token se a tentativa alternativa tiver êxito
+        if ((response.status === 401 || response.status === 403) && clTok) {
+          const preErr = String(resData.error || '').toUpperCase();
+          if (!preErr.includes('CLIENT-TOKEN NOT ALLOWED')) {
+            const altRes = await fetch(url, {
+              method: 'POST',
+              headers: makeHeaders(false),
+              body: JSON.stringify({
+                phone: currentPhone,
+                message: message,
+              }),
+            });
+            if (altRes.ok) {
+              response = altRes;
+              responseText = await altRes.text();
+              try { resData = JSON.parse(responseText); } catch { resData = { raw: responseText }; }
+            }
+          }
+        }
         lastResData = resData;
 
         // Verifica se houve erro explícito no corpo (ex: NOT_FOUND)
@@ -459,6 +511,22 @@ export class ZApiService {
         if (!response.ok || isNotFound) {
           lastError = bodyError || `Status HTTP ${response.status}`;
           console.warn(`[ZApiService:WARN] Disparo para ${currentPhone} retornou erro: ${lastError}`);
+
+          if (errUpper.includes('CLIENT-TOKEN IS NOT CONFIGURED') || errUpper.includes('CLIENT TOKEN IS NOT CONFIGURED')) {
+            return {
+              success: false,
+              error: '🔐 Disparo bloqueado pela Z-API: Sua conta Z-API exige o Client-Token de segurança da conta. Acesse Painel Z-API > Segurança, copie o Client-Token e preencha o campo "Client-Token da Conta" no painel.',
+              rawResponse: resData,
+            };
+          }
+
+          if (errUpper.includes('CLIENT-TOKEN NOT ALLOWED') || errUpper.includes('INVALID CLIENT-TOKEN')) {
+            return {
+              success: false,
+              error: '⚠️ Client-Token recusado pela Z-API. Verifique se copiou a chave correta no Painel Z-API > Segurança.',
+              rawResponse: resData,
+            };
+          }
 
           // Se for erro de número não encontrado e houver outra variante, continua o loop
           if (isNotFound && i < variants.length - 1) {

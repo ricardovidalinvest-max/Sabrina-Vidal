@@ -162,7 +162,15 @@ export const AutomationTechGuideModal: React.FC<TechGuideProps> = ({ isOpen, onC
   const [isTestingZapi, setIsTestingZapi] = useState<boolean>(false);
   const [zapiTestRes, setZapiTestRes] = useState<{ success: boolean; message: string; messageId?: string } | null>(null);
   const [isCheckingZapiStatus, setIsCheckingZapiStatus] = useState<boolean>(false);
-  const [zapiStatusRes, setZapiStatusRes] = useState<{ success: boolean; connected?: boolean; smartphoneConnected?: boolean; message: string; sessionStatus?: string } | null>(null);
+  const [zapiStatusRes, setZapiStatusRes] = useState<{
+    success: boolean;
+    connected?: boolean;
+    smartphoneConnected?: boolean;
+    message: string;
+    sessionStatus?: string;
+    requiresClientToken?: boolean;
+    invalidClientToken?: boolean;
+  } | null>(null);
   const [isFetchingZapiQr, setIsFetchingZapiQr] = useState<boolean>(false);
   const [zapiQrCodeImage, setZapiQrCodeImage] = useState<string | null>(null);
   const [isCheckingPhone, setIsCheckingPhone] = useState<boolean>(false);
@@ -1666,26 +1674,32 @@ export const AutomationTechGuideModal: React.FC<TechGuideProps> = ({ isOpen, onC
                     {/* Status Badge */}
                     {zapiStatusRes && (
                       <div
-                        className={`p-2.5 rounded-lg text-[11px] border ${
+                        className={`p-3 rounded-xl text-[11px] border ${
                           zapiStatusRes.connected
                             ? 'bg-emerald-950/60 text-emerald-300 border-emerald-700/60'
+                            : zapiStatusRes.requiresClientToken
+                            ? 'bg-amber-950/80 text-amber-200 border-amber-500/80 shadow-lg shadow-amber-950/50'
                             : 'bg-rose-950/60 text-rose-300 border-rose-700/60'
                         }`}
                       >
                         <div className="font-semibold flex items-center justify-between">
                           <span className="flex items-center gap-1.5">
                             <span
-                              className={`w-2 h-2 rounded-full ${
+                              className={`w-2.5 h-2.5 rounded-full ${
                                 zapiStatusRes.connected
                                   ? 'bg-emerald-400 animate-pulse'
+                                  : zapiStatusRes.requiresClientToken
+                                  ? 'bg-amber-400 animate-ping'
                                   : 'bg-rose-400'
                               }`}
                             />
                             {zapiStatusRes.connected
                               ? 'WhatsApp Pareado & Conectado (Multi-Device Ativo)'
+                              : zapiStatusRes.requiresClientToken
+                              ? 'WhatsApp Conectado na Z-API — Aguardando Client-Token!'
                               : 'WhatsApp Desconectado'}
                           </span>
-                          {!zapiStatusRes.connected && (
+                          {!zapiStatusRes.connected && !zapiStatusRes.requiresClientToken && (
                             <button
                               onClick={handleFetchZapiQr}
                               disabled={isFetchingZapiQr}
@@ -1695,9 +1709,21 @@ export const AutomationTechGuideModal: React.FC<TechGuideProps> = ({ isOpen, onC
                             </button>
                           )}
                         </div>
-                        <p className="mt-1 text-slate-300 text-[10px] leading-relaxed">
+                        <p className="mt-1.5 text-slate-200 text-[11px] leading-relaxed">
                           {zapiStatusRes.message}
                         </p>
+                        {zapiStatusRes.requiresClientToken && (
+                          <div className="mt-2.5 pt-2 border-t border-amber-500/30 text-[11px] text-amber-300 leading-relaxed bg-amber-950/40 p-2 rounded-lg">
+                            <span className="font-bold text-white block mb-1">📋 Como liberar os disparos agora:</span>
+                            <ol className="list-decimal list-inside space-y-0.5 text-amber-200/90 text-[10px]">
+                              <li>Acesse o painel da <strong>Z-API</strong> (app.z-api.io).</li>
+                              <li>No menu superior ou lateral, clique em <strong>Segurança</strong>.</li>
+                              <li>Copie o seu <strong>Token de Segurança da Conta (Client-Token)</strong>.</li>
+                              <li>Cole no campo <strong>Client-Token da Conta</strong> destacado abaixo.</li>
+                              <li>Clique em <strong>Salvar Configurações</strong> e em seguida em <strong>Status</strong>.</li>
+                            </ol>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -1774,17 +1800,26 @@ export const AutomationTechGuideModal: React.FC<TechGuideProps> = ({ isOpen, onC
 
                     <div>
                       <div className="flex items-center justify-between mb-1">
-                        <label className="text-[11px] text-slate-400 block">
+                        <label className="text-[11px] text-slate-300 font-medium block flex items-center gap-1.5">
                           Client-Token da Conta (ZAPI_CLIENT_TOKEN):
+                          {zapiStatusRes?.requiresClientToken && (
+                            <span className="text-amber-400 text-[10px] font-bold animate-pulse">← Obrigatório para sua conta</span>
+                          )}
                         </label>
-                        <span className="text-[10px] text-emerald-400/90 font-medium">Exigido pela Z-API</span>
+                        <span className={`text-[10px] font-medium ${zapiStatusRes?.requiresClientToken ? 'text-amber-400 font-bold' : 'text-slate-400'}`}>
+                          Z-API &gt; Menu &gt; Segurança
+                        </span>
                       </div>
                       <input
                         type="text"
-                        placeholder="Painel Z-API > Menu Superior Direito > Segurança > Client-Token"
+                        placeholder="Cole o Token de Segurança da sua conta Z-API"
                         value={zapiClientTokenInput}
                         onChange={(e) => setZapiClientTokenInput(e.target.value)}
-                        className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs font-mono text-slate-200 focus:border-emerald-500 focus:outline-none"
+                        className={`w-full px-3 py-1.5 bg-slate-950 border rounded-lg text-xs font-mono text-slate-200 focus:outline-none transition-all ${
+                          zapiStatusRes?.requiresClientToken
+                            ? 'border-amber-400 ring-2 ring-amber-400/50 bg-amber-950/20 shadow-md shadow-amber-950/40'
+                            : 'border-slate-700 focus:border-emerald-500'
+                        }`}
                       />
                     </div>
 

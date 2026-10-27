@@ -27,16 +27,16 @@ export const handleCalcomWebhook = async (req: Request, res: Response): Promise<
     }
 
     const bookingPayload = body.payload;
-    if (!bookingPayload || !bookingPayload.id) {
-      console.warn('[CalcomWebhook:WARN] Payload inválido ou ID do agendamento ausente.');
-      res.status(400).json({ error: 'Payload do Cal.com incompleto. Falta payload.id.' });
+    if (!bookingPayload || (!bookingPayload.id && !bookingPayload.uid)) {
+      console.warn('[CalcomWebhook:WARN] Payload inválido ou ID/UID do agendamento ausente.');
+      res.status(400).json({ error: 'Payload do Cal.com incompleto. Falta payload.id ou payload.uid.' });
       return;
     }
 
-    const calcomBookingId = String(bookingPayload.id);
+    const calcomBookingId = String(bookingPayload.uid || bookingPayload.id);
     
     // Extrai dados do cliente (attendees ou responses)
-    const attendee = bookingPayload.attendees?.[0];
+    const attendee = bookingPayload.attendees?.[0] || (bookingPayload as any).attendee;
     const customerName = attendee?.name || bookingPayload.responses?.name?.value || 'Paciente Sem Nome';
     const customerEmail = attendee?.email || bookingPayload.responses?.email?.value || 'paciente@exemplo.com';
     const customerPhone = String(

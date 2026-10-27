@@ -2627,31 +2627,167 @@ sudo certbot --nginx -d seudominio.com.br -d www.seudominio.com.br`}
           {activeTab === 'env' && (
             <div className="space-y-6">
               
-              <div className="flex items-center justify-between bg-slate-800/40 border border-slate-700/50 p-4 rounded-xl">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-800/40 border border-slate-700/50 p-4 rounded-xl">
                 <div>
                   <h3 className="text-sm font-bold text-white flex items-center gap-2">
                     <Key className="w-4 h-4 text-emerald-400" />
-                    Arquivo de Variáveis de Ambiente (.env)
+                    Variáveis de Ambiente para a Hostinger (.env)
                   </h3>
                   <p className="text-xs text-slate-400 mt-1">
-                    Arquivo de referência completo para hospedar o backend em VPS ou servidor autônomo.
+                    Variáveis completas com todas as chaves da Z-API e do sistema prontas para copiar e colar no painel da Hostinger.
                   </p>
                 </div>
 
                 <button
                   onClick={() => {
-                    const envFile = BACKEND_CODE_FILES.find((f) => f.category === 'env');
-                    if (envFile) handleCopy(envFile.code, 'env_full');
+                    const generatedEnv = `# ==============================================================================
+# VARIÁVEIS DE AMBIENTE - HOSTINGER PRODUÇÃO (DRA. SABRINA VIDAL)
+# ==============================================================================
+NODE_ENV=production
+PORT=3000
+APP_URL=${appUrlInput || 'https://sabrinavidal.com.br'}
+ADMIN_PASSWORD=sabrina@admin2026
+
+# Z-API (WHATSAPP OFICIAL)
+ZAPI_INSTANCE_ID=${zapiInstanceInput || '3FB2B3C4ABE0E161991CBEBF5C448C78'}
+ZAPI_TOKEN=${zapiTokenInput || '0BC27FC112C8DFDBAF9AE3A7'}
+ZAPI_CLIENT_TOKEN=${zapiClientTokenInput || ''}
+ZAPI_BASE_URL=https://api.z-api.io
+
+# ASAAS (GATEWAY PIX)
+ASAAS_API_KEY=${asaasApiKeyInput || ''}
+ASAAS_ENVIRONMENT=${asaasEnvInput || 'production'}
+ASAAS_WEBHOOK_TOKEN=${asaasWebhookTokenInput || ''}
+
+# CAL.COM (API v2)
+CALCOM_API_KEY=${calcomApiKeyInput || ''}
+CALCOM_WEBHOOK_SECRET=${calcomSecretInput || ''}
+CALCOM_BASE_URL=https://api.cal.com/v2
+CALCOM_EVENT_URL=${calcomEventUrlInput || 'https://cal.com/sabrina-amorim-tkood0/agendamentos-de-consultas'}
+
+# REGRAS DE NEGÓCIO
+CONSULTATION_PRICE_BRL=${priceBrlInput || '79.00'}
+PIX_EXPIRATION_MINUTES=${expirationMinInput || '15'}
+SABRINA_NOTIFICATION_EMAIL=nutricionistasabrinaamorim@gmail.com`;
+                    handleCopy(generatedEnv, 'env_full');
                   }}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold shadow-md transition-all"
+                  className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold shadow-md transition-all shrink-0 cursor-pointer"
                 >
                   {copiedKey === 'env_full' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                  {copiedKey === 'env_full' ? 'Copiado!' : 'Copiar .env Completo'}
+                  {copiedKey === 'env_full' ? 'Copiado para a Área de Transferência!' : 'Copiar .env Completo para Hostinger'}
                 </button>
               </div>
 
+              {/* Tabela de Variáveis Z-API para adicionar individualmente na Hostinger */}
+              <div className="bg-slate-900 border border-slate-700/80 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    Chaves da Z-API para colar na aba &ldquo;Environment Variables&rdquo; da Hostinger:
+                  </h4>
+                  <span className="text-[10px] text-slate-400">Hostinger &gt; Node.js App &gt; Variáveis de Ambiente</span>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2 text-xs">
+                  {/* ZAPI_INSTANCE_ID */}
+                  <div className="flex items-center justify-between p-2.5 bg-slate-950 rounded-lg border border-slate-800">
+                    <div className="space-y-0.5">
+                      <span className="font-mono text-emerald-400 font-bold block text-[11px]">ZAPI_INSTANCE_ID</span>
+                      <span className="font-mono text-slate-300 text-[11px] block">{zapiInstanceInput || '3FB2B3C4ABE0E161991CBEBF5C448C78'}</span>
+                    </div>
+                    <button
+                      onClick={() => handleCopy(zapiInstanceInput || '3FB2B3C4ABE0E161991CBEBF5C448C78', 'copy_inst')}
+                      className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[10px] font-semibold flex items-center gap-1 cursor-pointer"
+                    >
+                      {copiedKey === 'copy_inst' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      Copiar Valor
+                    </button>
+                  </div>
+
+                  {/* ZAPI_TOKEN */}
+                  <div className="flex items-center justify-between p-2.5 bg-slate-950 rounded-lg border border-slate-800">
+                    <div className="space-y-0.5">
+                      <span className="font-mono text-emerald-400 font-bold block text-[11px]">ZAPI_TOKEN</span>
+                      <span className="font-mono text-slate-300 text-[11px] block">{zapiTokenInput || '0BC27FC112C8DFDBAF9AE3A7'}</span>
+                    </div>
+                    <button
+                      onClick={() => handleCopy(zapiTokenInput || '0BC27FC112C8DFDBAF9AE3A7', 'copy_tok')}
+                      className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[10px] font-semibold flex items-center gap-1 cursor-pointer"
+                    >
+                      {copiedKey === 'copy_tok' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      Copiar Valor
+                    </button>
+                  </div>
+
+                  {/* ZAPI_BASE_URL */}
+                  <div className="flex items-center justify-between p-2.5 bg-slate-950 rounded-lg border border-slate-800">
+                    <div className="space-y-0.5">
+                      <span className="font-mono text-emerald-400 font-bold block text-[11px]">ZAPI_BASE_URL</span>
+                      <span className="font-mono text-slate-300 text-[11px] block">https://api.z-api.io</span>
+                    </div>
+                    <button
+                      onClick={() => handleCopy('https://api.z-api.io', 'copy_url')}
+                      className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[10px] font-semibold flex items-center gap-1 cursor-pointer"
+                    >
+                      {copiedKey === 'copy_url' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      Copiar Valor
+                    </button>
+                  </div>
+
+                  {/* ZAPI_CLIENT_TOKEN */}
+                  <div className="flex items-center justify-between p-2.5 bg-slate-950 rounded-lg border border-slate-800">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-emerald-400 font-bold text-[11px]">ZAPI_CLIENT_TOKEN</span>
+                        <span className="text-[10px] text-amber-400 bg-amber-950/50 px-1 rounded">Segurança da Conta</span>
+                      </div>
+                      <span className="font-mono text-slate-300 text-[11px] block">
+                        {zapiClientTokenInput || '(Preencha se o seu painel Z-API exigir em Menu > Segurança)'}
+                      </span>
+                    </div>
+                    {zapiClientTokenInput ? (
+                      <button
+                        onClick={() => handleCopy(zapiClientTokenInput, 'copy_cltok')}
+                        className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[10px] font-semibold flex items-center gap-1 cursor-pointer"
+                      >
+                        {copiedKey === 'copy_cltok' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                        Copiar Valor
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+
               <div className="bg-slate-950 rounded-xl border border-slate-800 p-4 font-mono text-xs text-emerald-300 leading-relaxed overflow-x-auto">
-                <pre>{BACKEND_CODE_FILES.find((f) => f.category === 'env')?.code}</pre>
+                <pre>{`# ==============================================================================
+# VARIÁVEIS DE AMBIENTE - HOSTINGER (.env)
+# ==============================================================================
+NODE_ENV=production
+PORT=3000
+APP_URL=${appUrlInput || 'https://sabrinavidal.com.br'}
+ADMIN_PASSWORD=sabrina@admin2026
+
+# Z-API (WHATSAPP OFICIAL)
+ZAPI_INSTANCE_ID=${zapiInstanceInput || '3FB2B3C4ABE0E161991CBEBF5C448C78'}
+ZAPI_TOKEN=${zapiTokenInput || '0BC27FC112C8DFDBAF9AE3A7'}
+ZAPI_CLIENT_TOKEN=${zapiClientTokenInput || ''}
+ZAPI_BASE_URL=https://api.z-api.io
+
+# ASAAS (GATEWAY PIX)
+ASAAS_API_KEY=${asaasApiKeyInput || ''}
+ASAAS_ENVIRONMENT=${asaasEnvInput || 'production'}
+ASAAS_WEBHOOK_TOKEN=${asaasWebhookTokenInput || ''}
+
+# CAL.COM (API v2)
+CALCOM_API_KEY=${calcomApiKeyInput || ''}
+CALCOM_WEBHOOK_SECRET=${calcomSecretInput || ''}
+CALCOM_BASE_URL=https://api.cal.com/v2
+CALCOM_EVENT_URL=${calcomEventUrlInput || 'https://cal.com/sabrina-amorim-tkood0/agendamentos-de-consultas'}
+
+# REGRAS DE NEGÓCIO
+CONSULTATION_PRICE_BRL=${priceBrlInput || '79.00'}
+PIX_EXPIRATION_MINUTES=${expirationMinInput || '15'}
+SABRINA_NOTIFICATION_EMAIL=nutricionistasabrinaamorim@gmail.com`}</pre>
               </div>
 
             </div>

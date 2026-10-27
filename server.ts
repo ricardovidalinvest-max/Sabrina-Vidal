@@ -8,6 +8,7 @@ import { getLiveConfig, updateLiveConfig } from './src/backend/config/env.config
 import { dbRepository } from './src/backend/db/database';
 import { bookingWorker } from './src/backend/queue/booking.worker';
 import { zapiService } from './src/backend/services/zapi.service';
+import { calcomService } from './src/backend/services/calcom.service';
 
 dotenv.config();
 
@@ -628,6 +629,30 @@ app.post('/api/asaas/create-pix', async (req: Request, res: Response) => {
     let providerName = 'Chave Oficial Drª Sabrina Vidal (PIX Direto)';
     let isLiveAsaas = false;
 
+    // Garante que o horário seja pré-reservado no Cal.com por 15 minutos
+    let activeCalcomUid = calcomBookingUid;
+    if (!activeCalcomUid) {
+      try {
+        const reserveRes = await calcomService.createReservation({
+          startTime: `${selectedDate}T${selectedTime}:00-03:00`,
+          attendee: {
+            name: fullName,
+            email,
+            phoneNumber: whatsapp,
+          },
+          metadata: {
+            cpf: effectiveCpf,
+            mainGoal,
+            restrictions,
+          },
+        });
+        activeCalcomUid = reserveRes.uid || reserveRes.bookingId;
+      } catch (calErr: any) {
+        console.warn('[Calcom Auto-Hold Warn]:', calErr.message);
+        activeCalcomUid = `cal_hold_${Date.now()}`;
+      }
+    }
+
     // IF real Asaas API Key is configured, attempt real Asaas creation
     if (hasRealAsaasKey()) {
       try {
@@ -646,7 +671,7 @@ app.post('/api/asaas/create-pix', async (req: Request, res: Response) => {
 
         // Step 2: Payment & PIX QR
         const description = `Consulta Nutrição Social - Drª Sabrina Vidal (${selectedDate} às ${selectedTime})`;
-        const externalRef = calcomBookingUid || `booking_${Date.now()}`;
+        const externalRef = activeCalcomUid;
         const asaasPayment = await createAsaasPaymentAndPix(
           baseUrl,
           activeApiKey,
@@ -714,7 +739,7 @@ app.post('/api/asaas/create-pix', async (req: Request, res: Response) => {
     const record: PaymentRecord = {
       id: paymentId,
       asaasCustomerId,
-      calcomBookingUid: calcomBookingUid || undefined,
+      calcomBookingUid: activeCalcomUid || undefined,
       status: 'PENDING',
       value,
       pixPayload,
@@ -738,6 +763,25 @@ app.post('/api/asaas/create-pix', async (req: Request, res: Response) => {
     };
 
     paymentsStore.set(paymentId, record);
+
+    // Registra no banco para rastreamento de expiração de 15 minutos pelo Cron Job
+    if (activeCalcomUid) {
+      dbRepository.createPendingBooking({
+        calcomBookingId: activeCalcomUid,
+        customerName: fullName,
+        customerEmail: email,
+        customerPhone: whatsapp,
+        metadata: {
+          startTime: `${selectedDate}T${selectedTime}:00-03:00`,
+          customerCpf: effectiveCpf,
+          mainGoal,
+          restrictions,
+          asaasPaymentId: paymentId,
+        },
+      }).then(async () => {
+        await dbRepository.updateAsaasPaymentId(activeCalcomUid, paymentId);
+      }).catch((e) => console.warn('[dbRepository Registration Warn]:', e));
+    }
 
     // Disparo imediato do PIX no WhatsApp via Z-API se configurado
     zapiService.sendPixMessage({
@@ -1048,28 +1092,14 @@ async function executePaymentConfirmation(payment: PaymentRecord, transactionId?
     whatsappDispatched: whatsappDispatch,
   };
 
-  // Optional: If Cal.com API key is configured, post to Cal.com API v2
-  if (calcomApiKey && calcomApiKey.trim().length > 5) {
+  // Confirma e aceita a pré-reserva no Cal.com API v2
+  if (calcomBookingUid) {
     try {
-      fetch('https://api.cal.com/v2/bookings', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${calcomApiKey}`,
-          'cal-api-version': '2024-08-13',
-        },
-        body: JSON.stringify({
-          start: `${payment.patientData.selectedDate}T${payment.patientData.selectedTime}:00.000Z`,
-          attendee: {
-            name: payment.patientData.fullName,
-            email: payment.patientData.email,
-            timeZone: 'America/Sao_Paulo',
-            language: 'pt-BR',
-          },
-        }),
-      }).catch((e) => console.warn('Cal.com v2 API dispatch note:', e));
-    } catch {
-      // background safe
+      await calcomService.acceptBooking(calcomBookingUid);
+      await dbRepository.updateStatus(calcomBookingUid, 'PAID');
+      console.log(`[Calcom] Agendamento ${calcomBookingUid} confirmado como ACCEPTED via CalcomService.`);
+    } catch (e: any) {
+      console.warn('[Calcom Accept Warn]:', e.message);
     }
   }
 

@@ -128,6 +128,10 @@ export const BookingFunnelModal: React.FC<BookingFunnelModalProps> = ({ isOpen, 
   const [copiedPix, setCopiedPix] = useState(false);
   const [copiedMeet, setCopiedMeet] = useState(false);
   const [pixTimeRemaining, setPixTimeRemaining] = useState(900); // 15 min
+  const [isExpired, setIsExpired] = useState<boolean>(false);
+  const [daysList, setDaysList] = useState(WEEK_AVAILABLE_DAYS);
+  const [slotsSource, setSlotsSource] = useState<'calcom_v2' | 'schedule_fallback'>('schedule_fallback');
+  const [isLoadingSlots, setIsLoadingSlots] = useState<boolean>(false);
   const [isCheckingAsaas, setIsCheckingAsaas] = useState(false);
   const [checkAsaasNotice, setCheckAsaasNotice] = useState<string | null>(null);
 
@@ -220,27 +224,67 @@ export const BookingFunnelModal: React.FC<BookingFunnelModalProps> = ({ isOpen, 
     return () => window.removeEventListener('message', handleCalcomMessage);
   }, [formData.fullName, formData.email, meetUrl]);
 
+  // Busca disponibilidade de horários no Cal.com ao abrir o modal
   useEffect(() => {
     if (isOpen) {
+      setIsLoadingSlots(true);
+      fetch('/api/calcom/available-slots')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && data.slots && data.slots.length > 0) {
+            setDaysList(data.slots);
+            setSlotsSource(data.source);
+            if (data.source === 'calcom_v2') {
+              setIsCalcomSynced(true);
+            }
+          }
+        })
+        .catch(() => {})
+        .finally(() => setIsLoadingSlots(false));
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen && daysList[selectedDayIndex]) {
       setFormData((prev) => ({
         ...prev,
-        selectedDate: AVAILABLE_DAYS[selectedDayIndex].date,
+        selectedDate: daysList[selectedDayIndex].date,
         selectedTime: selectedTime,
       }));
-      setPixTimeRemaining(900);
     }
-  }, [isOpen, selectedDayIndex, selectedTime]);
+  }, [isOpen, selectedDayIndex, selectedTime, daysList]);
 
-  // Countdown timer for PIX expiration
+  // Countdown timer para expiração do PIX (15 minutos)
   useEffect(() => {
     let timer: NodeJS.Timeout;
-    if (step === 'pix' && pixTimeRemaining > 0) {
+    if (step === 'pix' && pixTimeRemaining > 0 && !isExpired) {
       timer = setInterval(() => {
-        setPixTimeRemaining((prev) => (prev > 0 ? prev - 1 : 0));
+        setPixTimeRemaining((prev) => {
+          if (prev <= 1) {
+            setIsExpired(true);
+            return 0;
+          }
+          return prev - 1;
+        });
       }, 1000);
     }
     return () => clearInterval(timer);
-  }, [step, pixTimeRemaining]);
+  }, [step, pixTimeRemaining, isExpired]);
+
+  // Se expirar após 15 minutos sem pagamento, cancela a pré-reserva no Cal.com liberando a agenda
+  useEffect(() => {
+    if (isExpired && step === 'pix') {
+      const targetId = calcomBookingUid || paymentId;
+      if (targetId) {
+        console.log(`[Calcom] 15 minutos esgotados. Disparando cancelamento da reserva ${targetId}...`);
+        fetch(`/api/calcom/cancel-expired/${targetId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason: 'Pagamento PIX não identificado no prazo limite de 15 minutos.' }),
+        }).catch((e) => console.warn('Erro ao cancelar agendamento expirado:', e));
+      }
+    }
+  }, [isExpired, step, calcomBookingUid, paymentId]);
 
   // Polling Asaas status while on PIX screen
   useEffect(() => {
@@ -278,17 +322,18 @@ export const BookingFunnelModal: React.FC<BookingFunnelModalProps> = ({ isOpen, 
 
   if (!isOpen) return null;
 
-  const currentDay = WEEK_AVAILABLE_DAYS[selectedDayIndex] || WEEK_AVAILABLE_DAYS[0];
+  const currentDay = daysList[selectedDayIndex] || daysList[0] || WEEK_AVAILABLE_DAYS[0];
 
   const handleSelectDay = (idx: number) => {
     setSelectedDayIndex(idx);
-    const day = WEEK_AVAILABLE_DAYS[idx];
+    const day = daysList[idx] || WEEK_AVAILABLE_DAYS[idx];
     if (day) {
-      setSelectedTime(day.timeSlots[0] || '09:00');
+      const firstSlot = day.timeSlots[0] || '09:00';
+      setSelectedTime(firstSlot);
       setFormData((prev) => ({
         ...prev,
         selectedDate: day.date,
-        selectedTime: day.timeSlots[0] || '09:00',
+        selectedTime: firstSlot,
       }));
     }
   };
@@ -322,14 +367,50 @@ export const BookingFunnelModal: React.FC<BookingFunnelModalProps> = ({ isOpen, 
     return Object.keys(errors).length === 0;
   };
 
-  // Step 2 Submission -> Call backend Asaas API
+  // Step 2 Submission -> Pré-reserva no Cal.com por 15 min + Criação do PIX no Asaas
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateForm()) return;
 
     setIsGeneratingPix(true);
+    setIsExpired(false);
     try {
       const cleanCpf = formData.cpf.replace(/\D/g, '');
+
+      // 1. Pré-reserva o horário no Cal.com por 15 minutos aguardando PIX
+      let currentCalUid = calcomBookingUid;
+      try {
+        const reserveRes = await fetch('/api/calcom/reserve-slot', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            startTime: `${formData.selectedDate}T${formData.selectedTime}:00-03:00`,
+            patientName: formData.fullName,
+            patientEmail: formData.email,
+            patientPhone: formData.whatsapp,
+            customerCpf: cleanCpf,
+            mainGoal: formData.mainGoal,
+            restrictions: formData.restrictions,
+          }),
+        });
+
+        if (reserveRes.ok) {
+          const reserveData = await reserveRes.json();
+          if (reserveData.reservation?.uid || reserveData.reservation?.bookingId) {
+            currentCalUid = reserveData.reservation.uid || reserveData.reservation.bookingId;
+            setCalcomBookingUid(currentCalUid);
+            setIsCalcomSynced(true);
+            setCalcomNotice('✓ Horário pré-reservado por 15 minutos na agenda oficial do Cal.com!');
+            if (reserveData.reservation.videoCallUrl) {
+              setMeetUrl(reserveData.reservation.videoCallUrl);
+            }
+          }
+        }
+      } catch (calErr) {
+        console.warn('Nota sobre pré-reserva no Cal.com:', calErr);
+      }
+
+      // 2. Emite cobrança PIX no Asaas vinculada ao agendamento
       const res = await fetch('/api/asaas/create-pix', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -337,24 +418,29 @@ export const BookingFunnelModal: React.FC<BookingFunnelModalProps> = ({ isOpen, 
           ...formData,
           cpf: formData.cpf,
           cpfCnpj: cleanCpf,
-          calcomBookingUid: calcomBookingUid || undefined,
+          calcomBookingUid: currentCalUid || undefined,
         }),
       });
 
       if (res.ok) {
         const data = await res.json();
         setPaymentId(data.paymentId);
-        if (data.calcomBookingUid) setCalcomBookingUid(data.calcomBookingUid);
+        if (data.calcomBookingUid) {
+          setCalcomBookingUid(data.calcomBookingUid);
+          setIsCalcomSynced(true);
+        }
         if (data.pixPayload) setPixCopyPasteCode(data.pixPayload);
         if (data.pixQrCodeBase64) setPixQrBase64(data.pixQrCodeBase64);
         if (data.provider) setPixProvider(data.provider);
-        setPixTimeRemaining(900);
+        setPixTimeRemaining(900); // 15 minutos
       } else {
         // Fallback local ID
         setPaymentId(`pay_asaas_${Date.now()}`);
+        setPixTimeRemaining(900);
       }
     } catch {
       setPaymentId(`pay_asaas_${Date.now()}`);
+      setPixTimeRemaining(900);
     } finally {
       setIsGeneratingPix(false);
       setStep('pix');
@@ -490,7 +576,13 @@ Qualquer dúvida, pode responder direto a esta mensagem ou pelo e-mail nutricion
 
               <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-800 rounded-xl border border-emerald-200 text-xs font-semibold shrink-0">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Horários abertos para esta semana</span>
+                <span>
+                  {isLoadingSlots
+                    ? 'Consultando Cal.com...'
+                    : slotsSource === 'calcom_v2'
+                    ? '✓ Agenda Cal.com v2 Sincronizada'
+                    : 'Grade Oficial da Clínica · Dra. Sabrina'}
+                </span>
               </div>
             </div>
 
@@ -502,7 +594,7 @@ Qualquer dúvida, pode responder direto a esta mensagem ou pelo e-mail nutricion
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5">
-                {WEEK_AVAILABLE_DAYS.map((day, idx) => {
+                {daysList.map((day, idx) => {
                   const isSelected = selectedDayIndex === idx;
                   return (
                     <button
@@ -845,21 +937,69 @@ Qualquer dúvida, pode responder direto a esta mensagem ou pelo e-mail nutricion
         {/* STEP 3: PIX VIA ASAAS */}
         {step === 'pix' && (
           <div className="p-6 sm:p-8 space-y-6">
-            <div className="text-center max-w-md mx-auto">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold mb-2">
-                <span>{pixProvider}</span>
-                <span>• Cobrança Ativa</span>
+            {isExpired ? (
+              <div className="p-6 sm:p-8 text-center space-y-5 bg-rose-50/80 border-2 border-rose-200 rounded-3xl max-w-lg mx-auto shadow-sm">
+                <div className="w-16 h-16 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto shadow-sm ring-8 ring-rose-50">
+                  <Clock className="w-8 h-8 text-rose-600 animate-pulse" />
+                </div>
+                <div>
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-100 text-rose-800 text-xs font-bold mb-2">
+                    <ShieldAlert className="w-3.5 h-3.5 text-rose-600" />
+                    <span>Tempo de Reserva Esgotado (15 min)</span>
+                  </div>
+                  <h4 className="text-xl font-bold text-rose-950 font-serif-display">
+                    Horário Liberado na Agenda da Nutricionista
+                  </h4>
+                  <p className="text-xs text-rose-800 mt-2 leading-relaxed">
+                    O pagamento do PIX para a consulta de <strong>{displayDate} às {formData.selectedTime}</strong> não foi identificado no prazo limite de 15 minutos. Conforme as regras do sistema, o agendamento no Cal.com foi <strong>cancelado e liberado</strong> para outros pacientes.
+                  </p>
+                </div>
+
+                <div className="p-4 bg-white rounded-2xl border border-rose-200 text-xs text-neutral-600 text-left space-y-2">
+                  <div className="font-semibold text-neutral-900 flex items-center gap-1.5">
+                    <CalendarCheck className="w-4 h-4 text-emerald-700" />
+                    <span>Deseja agendar sua consulta?</span>
+                  </div>
+                  <p className="text-[11px] text-neutral-500 leading-relaxed">
+                    Você pode escolher outro horário livre na agenda agora mesmo. Um novo PIX de R$ 79,00 com 15 minutos de tolerância será gerado.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsExpired(false);
+                    setPixTimeRemaining(900);
+                    setPaymentId('');
+                    setCalcomBookingUid('');
+                    setStep('calendar');
+                  }}
+                  className="w-full py-3.5 px-5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  <span>Escolher Novo Horário na Agenda</span>
+                </button>
               </div>
-              <h4 className="text-xl font-bold text-emerald-950 font-serif-display">
-                Pague R$ 79,00 via PIX para confirmar sua consulta
-              </h4>
-              <p className="text-xs text-neutral-500 mt-1">
-                Tempo restante para garantir seu horário no Cal.com:{' '}
-                <span className="font-mono font-bold text-rose-600 tabular-nums">
-                  {formatMinutes(pixTimeRemaining)}
-                </span>
-              </p>
-            </div>
+            ) : (
+              <>
+                <div className="text-center max-w-md mx-auto">
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold mb-2">
+                    <span>{pixProvider}</span>
+                    <span>• Cobrança Ativa</span>
+                  </div>
+                  <h4 className="text-xl font-bold text-emerald-950 font-serif-display">
+                    Pague R$ 79,00 via PIX para confirmar sua consulta
+                  </h4>
+                  <p className="text-xs text-neutral-500 mt-1">
+                    Tempo restante para garantir seu horário no Cal.com:{' '}
+                    <span className="font-mono font-bold text-rose-600 tabular-nums">
+                      {formatMinutes(pixTimeRemaining)}
+                    </span>
+                  </p>
+                  <p className="text-[11px] text-neutral-400 mt-0.5">
+                    Se o pagamento não for identificado em 15 minutos, a agenda será liberada automaticamente.
+                  </p>
+                </div>
 
             <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
               {/* QR Code Container */}
@@ -1009,8 +1149,10 @@ Qualquer dúvida, pode responder direto a esta mensagem ou pelo e-mail nutricion
                 </div>
               </div>
             </div>
-          </div>
+          </>
         )}
+      </div>
+    )}
 
         {/* STEP 4: SUCCESS (EXPERIÊNCIA PURA DO PACIENTE) */}
         {step === 'success' && (

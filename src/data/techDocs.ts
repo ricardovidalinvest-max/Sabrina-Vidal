@@ -131,7 +131,7 @@ CREATE TRIGGER trigger_agendamentos_updated_at
     path: 'src/services/calcom.service.ts',
     filename: 'calcom.service.ts',
     category: 'services',
-    description: 'Serviço para interagir com a API do Cal.com: confirma reservas (ACCEPTED) ou cancela para liberar horários.',
+    description: 'Serviço Cal.com API v2: consulta disponibilidade de horários, cria pré-reserva de 15 minutos, confirma (ACCEPTED) e cancela por expiração.',
     language: 'typescript',
     code: `export class CalcomService {
   private apiKey: string;
@@ -140,6 +140,35 @@ CREATE TRIGGER trigger_agendamentos_updated_at
   constructor() {
     this.apiKey = process.env.CALCOM_API_KEY || '';
     this.baseUrl = process.env.CALCOM_BASE_URL || 'https://api.cal.com/v2';
+  }
+
+  /**
+   * Consulta disponibilidade de horários no Cal.com API v2
+   */
+  async getAvailableSlots(date?: string): Promise<{ success: boolean; slots: any[]; source: string }> {
+    if (!this.apiKey) return { success: true, slots: [], source: 'schedule_fallback' };
+    const res = await fetch(\`\${this.baseUrl}/slots/available?startTime=\${date}T00:00:00Z\`, {
+      headers: { 'Authorization': \`Bearer \${this.apiKey}\`, 'cal-api-version': '2024-08-13' }
+    });
+    const data = await res.json();
+    return { success: true, slots: data.data?.slots || [], source: 'calcom_v2' };
+  }
+
+  /**
+   * Cria pré-reserva de 15 minutos no Cal.com aguardando pagamento
+   */
+  async createReservation(params: any): Promise<{ success: boolean; bookingId: string; expiresAt: string }> {
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+    if (!this.apiKey) {
+      return { success: true, bookingId: \`cal_hold_\${Date.now()}\`, expiresAt };
+    }
+    const res = await fetch(\`\${this.baseUrl}/bookings\`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': \`Bearer \${this.apiKey}\`, 'cal-api-version': '2024-08-13' },
+      body: JSON.stringify({ start: params.startTime, attendee: params.attendee, metadata: { status: 'PENDING_PAYMENT', holdUntil: expiresAt } })
+    });
+    const data = await res.json();
+    return { success: true, bookingId: String(data.data?.id || data.id), expiresAt };
   }
 
   /**
@@ -179,7 +208,7 @@ CREATE TRIGGER trigger_agendamentos_updated_at
   }
 
   /**
-   * Cancela o agendamento no Cal.com liberando o horário na agenda pública da Dra. Sabrina.
+   * Cancela o agendamento no Cal.com liberando o horário na agenda pública da Dra. Sabrina (após 15 minutos).
    */
   async cancelBooking(
     bookingId: string | number,
@@ -905,10 +934,10 @@ ASAAS_API_KEY="$aact_YTU5YTE0M2M6N2ZkMS00MzJmLTg1YTctxxxxxxxxxxxxxxxxxxxxxx"
 ASAAS_ENVIRONMENT="production" # ou "sandbox"
 ASAAS_WEBHOOK_TOKEN="whsec_seu_token_webhook_asaas"
 
-# Z-API (WhatsApp)
-ZAPI_INSTANCE_ID="3Cxxxxxxxxxxxxxxxxxxxxxx"
-ZAPI_TOKEN="B8xxxxxxxxxxxxxxxxxxxxxx"
-ZAPI_CLIENT_TOKEN="Fxxxxxxxxxxxxxxxxxxxxxxxx" # Opcional
+# Z-API (WhatsApp Oficial)
+ZAPI_INSTANCE_ID="3FB2B3C4ABE0E161991CBEBF5C448C78"
+ZAPI_TOKEN="0BC27FC112C8DFDBAF9AE3A7"
+ZAPI_CLIENT_TOKEN="" # Preencha se sua conta Z-API tiver segurança ativada
 ZAPI_BASE_URL="https://api.z-api.io"
 
 # CONFIGURAÇÕES GERAIS

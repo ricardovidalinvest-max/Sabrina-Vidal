@@ -343,6 +343,173 @@ backendRouter.post('/api/backend/config/test-calcom', requireAdminAuth, async (r
   }
 });
 
+// ==============================================================================
+// 3.1 FLUXO CAL.COM: DISPONIBILIDADE, PRÉ-RESERVA (15 MIN) & CANCELAMENTO AUTOMÁTICO
+// ==============================================================================
+
+// Consultar disponibilidade de horários no Cal.com para agendamento
+backendRouter.get('/api/calcom/available-slots', async (req: Request, res: Response) => {
+  try {
+    const { date, eventTypeId } = req.query;
+    const result = await calcomService.getAvailableSlots({
+      date: date as string,
+      eventTypeId: eventTypeId ? String(eventTypeId) : undefined,
+    });
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Pré-reservar horário no Cal.com por 15 minutos aguardando pagamento
+backendRouter.post('/api/calcom/reserve-slot', async (req: Request, res: Response) => {
+  try {
+    const {
+      startTime,
+      endTime,
+      eventTypeId,
+      patientName,
+      patientEmail,
+      patientPhone,
+      customerCpf,
+      mainGoal,
+      restrictions,
+    } = req.body;
+
+    if (!startTime || !patientName || !patientEmail) {
+      return res.status(400).json({
+        success: false,
+        error: 'Data/horário, nome e e-mail do paciente são obrigatórios.',
+      });
+    }
+
+    const reservation = await calcomService.createReservation({
+      startTime,
+      endTime,
+      eventTypeId,
+      attendee: {
+        name: patientName,
+        email: patientEmail,
+        phoneNumber: patientPhone,
+      },
+      metadata: {
+        cpf: customerCpf,
+        mainGoal,
+        restrictions,
+      },
+    });
+
+    // Registra no banco com status PENDING
+    await dbRepository.createPendingBooking({
+      calcomBookingId: reservation.bookingId,
+      customerName: patientName,
+      customerEmail: patientEmail,
+      customerPhone: patientPhone || '',
+      metadata: {
+        startTime: reservation.startTime,
+        endTime: reservation.endTime,
+        videoCallUrl: reservation.videoCallUrl,
+        expiresAt: reservation.expiresAt,
+        customerCpf,
+      },
+    });
+
+    console.log(`[CalcomRouter] Horário pré-reservado no Cal.com: ${reservation.bookingId} até ${reservation.expiresAt}`);
+
+    res.json({
+      success: true,
+      message: 'Horário pré-reservado no Cal.com por 15 minutos!',
+      reservation,
+      minutesRemaining: 15,
+    });
+  } catch (error: any) {
+    console.error('[CalcomRouter:ReserveError]', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Cancelar agendamento expirado (>15 minutos sem pagamento)
+backendRouter.post('/api/calcom/cancel-expired/:bookingId', async (req: Request, res: Response) => {
+  try {
+    const { bookingId } = req.params;
+    const { reason } = req.body;
+    const cancelReason = reason || 'Pagamento PIX não identificado no prazo limite de 15 minutos.';
+
+    console.log(`[CalcomRouter] Solicitação de cancelamento de horário expirado ID: ${bookingId}...`);
+
+    // 1. Busca registro no banco
+    const record = await dbRepository.findByCalcomId(bookingId) || await dbRepository.findByAsaasPaymentId(bookingId);
+
+    // Se já foi pago, não cancela!
+    if (record && record.status === 'PAID') {
+      return res.status(400).json({
+        success: false,
+        message: 'Este agendamento já foi confirmado e pago com sucesso. Não pode ser cancelado por expiração.',
+      });
+    }
+
+    // 2. Cancela no Cal.com
+    await calcomService.cancelBooking(bookingId, cancelReason);
+
+    // 3. Se tiver cobrança Asaas, deleta
+    if (record?.asaas_payment_id) {
+      await asaasService.deleteCharge(record.asaas_payment_id);
+    }
+
+    // 4. Atualiza o banco para CANCELED
+    if (record) {
+      await dbRepository.updateStatus(record.id, 'CANCELED');
+    }
+
+    // 5. Envia WhatsApp de notificação via Z-API
+    if (record?.customer_phone) {
+      await zapiService.sendExpirationMessage({
+        phone: record.customer_phone,
+        customerName: record.customer_name,
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Agendamento cancelado e horário liberado com sucesso na agenda do Cal.com.',
+      bookingId,
+      status: 'CANCELED',
+    });
+  } catch (error: any) {
+    console.error('[CalcomRouter:CancelError]', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Consultar status de agendamento e tempo restante de reserva
+backendRouter.get('/api/calcom/booking-status/:bookingId', async (req: Request, res: Response) => {
+  try {
+    const { bookingId } = req.params;
+    const record = await dbRepository.findByCalcomId(bookingId) || await dbRepository.findByAsaasPaymentId(bookingId);
+
+    if (!record) {
+      return res.status(404).json({ success: false, error: 'Agendamento não encontrado.' });
+    }
+
+    const createdAt = new Date(record.created_at).getTime();
+    const expiresAt = createdAt + 15 * 60 * 1000;
+    const now = Date.now();
+    const secondsRemaining = Math.max(0, Math.floor((expiresAt - now) / 1000));
+    const isExpired = secondsRemaining === 0 && record.status === 'PENDING';
+
+    res.json({
+      success: true,
+      booking: record,
+      status: record.status,
+      secondsRemaining,
+      isExpired,
+      expiresAt: new Date(expiresAt).toISOString(),
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Testar status da instância Z-API (Verificar se QR Code está conectado e status do smartphone)
 backendRouter.post('/api/backend/config/test-zapi-status', requireAdminAuth, async (req: Request, res: Response) => {
   try {

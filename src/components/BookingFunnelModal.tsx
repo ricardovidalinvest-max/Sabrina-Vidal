@@ -330,6 +330,7 @@ export const BookingFunnelModal: React.FC<BookingFunnelModalProps> = ({ isOpen, 
                 }
               }
               setStep('success');
+              fetchAvailableSlots(30);
               if (pollingRef.current) clearInterval(pollingRef.current);
             }
           }
@@ -565,6 +566,7 @@ export const BookingFunnelModal: React.FC<BookingFunnelModalProps> = ({ isOpen, 
           }
         }
         setStep('success');
+        fetchAvailableSlots(30);
       } else {
         setCheckAsaasNotice(
           data.message ||

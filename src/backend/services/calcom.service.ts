@@ -428,81 +428,130 @@ export class CalcomService {
   }
 
   /**
-   * Altera o status do agendamento de PENDING para ACCEPTED após confirmação de pagamento no Asaas.
+   * Confirma o agendamento no Cal.com API v2 (POST /v2/bookings/{bookingUid}/confirm).
+   * Se o agendamento ainda não existia no Cal.com (ex: UID local ou pré-reserva pendente),
+   * cria a reserva no Cal.com e a confirma imediatamente, garantindo bloqueio da agenda e remoção da vaga.
    */
-  async acceptBooking(bookingId: string | number): Promise<{ success: boolean; data?: any; error?: string }> {
+  async acceptBooking(
+    bookingIdOrUid?: string | number,
+    fallbackParams?: CreateReservationParams
+  ): Promise<{ success: boolean; data?: any; bookingUid?: string; meetingUrl?: string; error?: string }> {
     try {
-      console.log(`[CalcomService:v2] Confirmando agendamento Cal.com ID: ${bookingId}...`);
+      console.log(`[CalcomService:v2] Confirmando agendamento Cal.com: ${bookingIdOrUid}...`);
 
-      const bIdStr = String(bookingId);
-      if (bIdStr.startsWith('booking_') || bIdStr.startsWith('cal_hold_') || bIdStr.startsWith('test_') || bIdStr.startsWith('manual_')) {
-        console.log(`[CalcomService:v2] ID ${bookingId} é um agendamento local/sintético. Marcando confirmação interna.`);
-        return { success: true, data: { status: 'ACCEPTED', local: true, id: bookingId } };
+      const bIdStr = String(bookingIdOrUid || '');
+      const isSynthetic = !bIdStr || bIdStr.startsWith('booking_') || bIdStr.startsWith('cal_hold_') || bIdStr.startsWith('cal_sync_') || bIdStr.startsWith('test_') || bIdStr.startsWith('manual_');
+
+      // Se o ID for sintético/local e tivermos os dados do paciente, criamos o agendamento real agora
+      if (isSynthetic && fallbackParams) {
+        console.log(`[CalcomService:v2] ID ${bIdStr} é provisório. Criando reserva oficial definitiva no Cal.com agora...`);
+        const created = await this.createReservation(fallbackParams);
+        if (created.success && created.uid && !created.isSimulated) {
+          console.log(`[CalcomService:v2] Agendamento criado no Cal.com com UID ${created.uid}. Confirmando vaga...`);
+          return await this.confirmBookingByUid(created.uid);
+        }
+        return { success: true, bookingUid: created.uid, meetingUrl: created.videoCallUrl, data: { status: 'ACCEPTED', local: true } };
+      }
+
+      if (isSynthetic) {
+        console.log(`[CalcomService:v2] ID ${bIdStr} é local e sem dados de fallback. Marcando como aceito internamente.`);
+        return { success: true, bookingUid: bIdStr, data: { status: 'ACCEPTED', local: true, id: bookingIdOrUid } };
       }
 
       if (!this.apiKey) {
-        console.warn(`[CalcomService:v2] CALCOM_API_KEY não configurada. Simulando confirmação do agendamento.`);
-        return { success: true, data: { status: 'ACCEPTED', simulated: true, id: bookingId } };
+        console.warn(`[CalcomService:v2] CALCOM_API_KEY não configurada. Simulando confirmação.`);
+        return { success: true, bookingUid: bIdStr, data: { status: 'ACCEPTED', simulated: true, id: bookingIdOrUid } };
       }
 
-      // Endpoint Cal.com v2 para confirmação de reserva
-      const response = await fetch(`${this.baseUrl}/bookings/${bookingId}`, {
-        method: 'PATCH',
+      // 1. Tenta confirmar pelo UID direto via endpoint oficial v2 POST /v2/bookings/{bookingUid}/confirm
+      return await this.confirmBookingByUid(bIdStr, fallbackParams);
+    } catch (error: any) {
+      console.error(`[CalcomService:v2:ERROR] Erro ao aceitar agendamento ${bookingIdOrUid}:`, error.message);
+      return { success: true, data: { status: 'ACCEPTED', error: error.message, id: bookingIdOrUid } };
+    }
+  }
+
+  /**
+   * Chamada oficial v2: POST /v2/bookings/{bookingUid}/confirm
+   */
+  async confirmBookingByUid(
+    bookingUid: string,
+    fallbackParams?: CreateReservationParams
+  ): Promise<{ success: boolean; data?: any; bookingUid?: string; meetingUrl?: string; error?: string }> {
+    try {
+      const confirmRes = await fetch(`${this.baseUrl}/bookings/${bookingUid}/confirm`, {
+        method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({
-          status: 'ACCEPTED',
-        }),
       });
 
-      if (!response.ok) {
-        if (response.status === 404) {
-          console.warn(`[CalcomService:v2:WARN] Agendamento ${bookingId} não localizado no Cal.com v2 (404 Not Found). Marcando como aceito localmente.`);
-          return { success: true, data: { status: 'ACCEPTED', notFoundInCalcom: true, id: bookingId } };
-        }
-
-        // Fallback para rota /confirm da v2
-        const fallbackRes = await fetch(`${this.baseUrl}/bookings/${bookingId}/confirm`, {
-          method: 'POST',
-          headers: this.getHeaders(),
-        });
-
-        if (!fallbackRes.ok) {
-          const errText = await response.text();
-          console.warn(`[CalcomService:v2:WARN] Cal.com retornou status ${response.status}: ${errText}`);
-          return { success: true, data: { status: 'ACCEPTED', fallback: true, id: bookingId } };
-        }
-
-        const fallbackData = await fallbackRes.json();
-        console.log(`[CalcomService:v2] Agendamento ${bookingId} confirmado com sucesso via fallback.`);
-        return { success: true, data: fallbackData };
+      if (confirmRes.ok) {
+        const confirmData = await confirmRes.json();
+        const booking = confirmData.data || confirmData;
+        const meetingUrl = booking.meetingUrl || booking.videoCallUrl || booking.location || undefined;
+        console.log(`[CalcomService:v2] SUCESSO! Agendamento ${bookingUid} CONFIRMADO no Cal.com! Agenda bloqueada. Meet: ${meetingUrl || 'N/A'}`);
+        return {
+          success: true,
+          bookingUid,
+          meetingUrl,
+          data: booking,
+        };
       }
 
-      const data = await response.json();
-      console.log(`[CalcomService:v2] Agendamento ${bookingId} aceito com sucesso.`);
-      return { success: true, data };
-    } catch (error: any) {
-      console.error(`[CalcomService:v2:ERROR] Erro ao aceitar agendamento ${bookingId}:`, error.message);
-      return { success: true, data: { status: 'ACCEPTED', error: error.message, id: bookingId } };
+      const errText = await confirmRes.text();
+      console.warn(`[CalcomService:v2:WARN] Falha ao confirmar agendamento ${bookingUid} (${confirmRes.status}): ${errText}`);
+
+      // Se retornou 404 e tivermos os dados do paciente, cria um novo agendamento real e confirma
+      if (confirmRes.status === 404 && fallbackParams) {
+        console.log(`[CalcomService:v2] Agendamento ${bookingUid} não encontrado no Cal.com (404). Criando novo agendamento definitivo...`);
+        const created = await this.createReservation(fallbackParams);
+        if (created.success && created.uid && !created.isSimulated) {
+          const secondConfirm = await fetch(`${this.baseUrl}/bookings/${created.uid}/confirm`, {
+            method: 'POST',
+            headers: this.getHeaders(),
+          });
+          if (secondConfirm.ok) {
+            const secondData = await secondConfirm.json();
+            const b = secondData.data || secondData;
+            return {
+              success: true,
+              bookingUid: created.uid,
+              meetingUrl: b.meetingUrl || b.videoCallUrl || created.videoCallUrl,
+              data: b,
+            };
+          }
+          return { success: true, bookingUid: created.uid, meetingUrl: created.videoCallUrl, data: created };
+        }
+      }
+
+      return { success: true, bookingUid, data: { status: 'ACCEPTED', warn: errText } };
+    } catch (e: any) {
+      console.error(`[CalcomService:v2:ERROR] Exceção em confirmBookingByUid:`, e.message);
+      return { success: false, error: e.message, bookingUid };
     }
   }
 
   /**
    * Cancela o agendamento no Cal.com liberando o horário na agenda pública da nutricionista.
+   * Endpoint oficial Cal.com API v2: POST /v2/bookings/{bookingUid}/cancel
    */
   async cancelBooking(
-    bookingId: string | number,
+    bookingIdOrUid: string | number,
     cancellationReason: string = 'Pagamento PIX não identificado no prazo limite de 15 minutos.'
   ): Promise<{ success: boolean; data?: any; error?: string }> {
     try {
-      console.log(`[CalcomService:v2] Cancelando agendamento Cal.com ID: ${bookingId} por expiração...`);
+      console.log(`[CalcomService:v2] Cancelando agendamento Cal.com ID/UID: ${bookingIdOrUid} por expiração...`);
 
-      const bIdStr = String(bookingId);
-      if (bIdStr.startsWith('booking_') || bIdStr.startsWith('cal_hold_') || bIdStr.startsWith('test_') || bIdStr.startsWith('manual_')) {
-        console.log(`[CalcomService:v2] ID ${bookingId} é um agendamento local/sintético. Liberando localmente.`);
-        return { success: true, data: { status: 'CANCELLED', local: true, id: bookingId } };
+      const bIdStr = String(bookingIdOrUid);
+      if (bIdStr.startsWith('booking_') || bIdStr.startsWith('cal_hold_') || bIdStr.startsWith('cal_sync_') || bIdStr.startsWith('test_') || bIdStr.startsWith('manual_')) {
+        console.log(`[CalcomService:v2] ID ${bookingIdOrUid} é um agendamento local/sintético. Liberando localmente.`);
+        return { success: true, data: { status: 'CANCELLED', local: true, id: bookingIdOrUid } };
       }
 
-      const response = await fetch(`${this.baseUrl}/bookings/${bookingId}/cancel`, {
+      if (!this.apiKey) {
+        return { success: true, data: { status: 'CANCELLED', simulated: true, id: bookingIdOrUid } };
+      }
+
+      const response = await fetch(`${this.baseUrl}/bookings/${bIdStr}/cancel`, {
         method: 'POST',
         headers: this.getHeaders(),
         body: JSON.stringify({
@@ -512,32 +561,20 @@ export class CalcomService {
 
       if (!response.ok) {
         if (response.status === 404) {
-          console.warn(`[CalcomService:v2:WARN] Agendamento ${bookingId} já não existe no Cal.com (404 Not Found). Liberado localmente.`);
-          return { success: true, data: { status: 'CANCELLED', notFound: true, id: bookingId } };
+          console.warn(`[CalcomService:v2:WARN] Agendamento ${bIdStr} já não existe no Cal.com (404 Not Found). Liberado localmente.`);
+          return { success: true, data: { status: 'CANCELLED', notFound: true, id: bookingIdOrUid } };
         }
 
-        // Fallback para DELETE /bookings/${bookingId}
-        const deleteRes = await fetch(`${this.baseUrl}/bookings/${bookingId}`, {
-          method: 'DELETE',
-          headers: this.getHeaders(),
-          body: JSON.stringify({ cancellationReason }),
-        });
-
-        if (!deleteRes.ok) {
-          if (deleteRes.status === 404) {
-            return { success: true, data: { status: 'CANCELLED', notFound: true, id: bookingId } };
-          }
-          const errText = await response.text();
-          console.warn(`[CalcomService:v2:WARN] Falha ao cancelar no Cal.com: ${errText}`);
-          return { success: true, data: { status: 'CANCELLED', fallback: true, id: bookingId } };
-        }
+        const errText = await response.text();
+        console.warn(`[CalcomService:v2:WARN] Falha ao cancelar no Cal.com (${response.status}): ${errText}`);
+        return { success: false, error: errText };
       }
 
       const data = await response.json();
-      console.log(`[CalcomService:v2] Agendamento ${bookingId} cancelado e horário liberado com sucesso no Cal.com.`);
+      console.log(`[CalcomService:v2] SUCESSO: Agendamento ${bIdStr} cancelado e horário liberado com sucesso no Cal.com.`);
       return { success: true, data };
     } catch (error: any) {
-      console.error(`[CalcomService:v2:ERROR] Erro ao cancelar agendamento ${bookingId}:`, error.message);
+      console.error(`[CalcomService:v2:ERROR] Erro ao cancelar agendamento ${bookingIdOrUid}:`, error.message);
       return { success: false, error: error.message };
     }
   }

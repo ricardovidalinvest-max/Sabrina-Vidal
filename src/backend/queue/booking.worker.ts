@@ -186,13 +186,24 @@ class BookingAsyncWorker {
     const calcomBookingId = updatedRecord?.calcom_booking_id || payment.externalReference;
     console.log(`[Worker:Asaas] Status atualizado para PAID no banco (Agendamento: ${calcomBookingId}).`);
 
-    // c) Chamar API do Cal.com alterando o status de PENDING para ACCEPTED
+    // c) Chamar API do Cal.com alterando o status de PENDING para ACCEPTED (ou criar se não existia)
     let meetingUrl = 'https://meet.google.com/social-sabrina';
-    if (calcomBookingId) {
-      const calRes = await calcomService.acceptBooking(calcomBookingId);
-      if (calRes.data?.videoCallUrl || calRes.data?.meetingUrl) {
-        meetingUrl = calRes.data.videoCallUrl || calRes.data.meetingUrl;
-      }
+    const startTime = (updatedRecord?.metadata?.startTime as string) || new Date().toISOString();
+    const calRes = await calcomService.acceptBooking(calcomBookingId, {
+      startTime,
+      attendee: {
+        name: updatedRecord?.customer_name || 'Paciente',
+        email: updatedRecord?.customer_email || 'paciente@gmail.com',
+        phoneNumber: updatedRecord?.customer_phone,
+      },
+      metadata: {
+        paymentId,
+        status: 'PAID',
+      },
+    });
+
+    if (calRes.meetingUrl || calRes.data?.meetingUrl || calRes.data?.videoCallUrl) {
+      meetingUrl = calRes.meetingUrl || calRes.data?.meetingUrl || calRes.data?.videoCallUrl;
     }
 
     // d) Chamar Z-API enviando mensagem de confirmação no WhatsApp com o link da reunião

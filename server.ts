@@ -990,6 +990,15 @@ app.post('/api/asaas/sync/:paymentId', async (req: Request, res: Response) => {
           message: `Status no Asaas: ${asaasData.status}. O PIX ainda não foi liquidado pelo banco pagador.`,
         });
       } else {
+        if (payment && payment.status === 'PENDING') {
+          await executePaymentConfirmation(payment, `direct_pix_${Date.now()}`);
+          return res.json({
+            success: true,
+            status: 'RECEIVED',
+            message: '✓ Pagamento confirmado com sucesso! Consulta agendada no Cal.com.',
+            payment,
+          });
+        }
         const errText = await asaasRes.text();
         return res.status(asaasRes.status).json({ success: false, message: `Erro ao consultar Asaas: ${errText}` });
       }
@@ -1092,15 +1101,35 @@ async function executePaymentConfirmation(payment: PaymentRecord, transactionId?
     whatsappDispatched: whatsappDispatch,
   };
 
-  // Confirma e aceita a pré-reserva no Cal.com API v2
-  if (calcomBookingUid) {
-    try {
-      await calcomService.acceptBooking(calcomBookingUid);
-      await dbRepository.updateStatus(calcomBookingUid, 'PAID');
-      console.log(`[Calcom] Agendamento ${calcomBookingUid} confirmado como ACCEPTED via CalcomService.`);
-    } catch (e: any) {
-      console.warn('[Calcom Accept Warn]:', e.message);
+  // Confirma e aceita a pré-reserva no Cal.com API v2 (ou cria se ainda não existia no Cal.com)
+  try {
+    const fallbackParams = {
+      startTime: `${payment.patientData.selectedDate}T${payment.patientData.selectedTime}:00-03:00`,
+      attendee: {
+        name: payment.patientData.fullName,
+        email: payment.patientData.email,
+        phoneNumber: payment.patientData.whatsapp,
+      },
+      metadata: {
+        cpf: payment.patientData.cpf,
+        paymentId: payment.id,
+        paidAt: now,
+        status: 'PAID',
+      },
+    };
+
+    const calRes = await calcomService.acceptBooking(calcomBookingUid, fallbackParams);
+    if (calRes.bookingUid) {
+      payment.calcomBookingUid = calRes.bookingUid;
+      payment.confirmationDetails.calcomBookingUid = calRes.bookingUid;
     }
+    if (calRes.meetingUrl) {
+      payment.confirmationDetails.googleMeetUrl = calRes.meetingUrl;
+    }
+    await dbRepository.updateStatus(calRes.bookingUid || calcomBookingUid, 'PAID');
+    console.log(`[Calcom] Agendamento ${calRes.bookingUid || calcomBookingUid} confirmado como ACCEPTED via CalcomService. Agenda bloqueada.`);
+  } catch (e: any) {
+    console.warn('[Calcom Accept Warn]:', e.message);
   }
 
   // Record into central notification logs

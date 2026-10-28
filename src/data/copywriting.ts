@@ -50,7 +50,7 @@ export const COPY_CONTENT = {
     badge: "O Movimento da Nutrição Social",
     title: "Uma nutrição humanizada, prática e verdadeiramente possível.",
     paragraph1:
-      "Meu nome é Drª Sabrina Vidal (CRN 17198 - GO), sou nutricionista clínica apaixonada por transformar vidas através da comida acessível e sem neuroses. Criei o projeto de Nutrição Social porque acredito que saúde de qualidade não pode ser privilégio de quem tem muito dinheiro.",
+      "Meu nome é Drª Sabrina Vidal (CRN 17198 - GO), sou nutricionista clínica apaixonada por transformar vidas através da comida acessível e sem neuroses. Criei o projeto de Nutrição Social porque acredito na saúde de qualidade para todos.",
     paragraph2:
       "Aqui você não vai encontrar proibições radicais, nem suplementos desnecessários. Nós vamos montar juntos um plano alimentar com arroz, feijão, ovos, legumes da feira, frutas da época e aquele café da manhã que você já ama — ajustando apenas as combinações certas para ativar seu metabolismo.",
     pillars: [
@@ -74,31 +74,25 @@ export const COPY_CONTENT = {
     subtitle: "Um pacote completo de acompanhamento para você ter clareza, autonomia e resultados duradouros.",
     items: [
       {
-        title: "01. Consulta Individual por Vídeo (50 min)",
-        tagline: "Atendimento caloroso 1 a 1",
+        title: "01. Consulta individual com até 30 min",
+        tagline: "O tempo médio da consulta é de até 30 minutos",
         description:
-          "Conversamos com calma sobre sua rotina, horários, histórico de saúde, preferências de paladar, dificuldades emocionais e objetivos. Nada de questionário impessoal.",
+          "Conversamos com calma sobre sua rotina, horários, histórico de saúde, preferências de paladar e objetivos. O tempo médio da consulta é de até 30 minutos via Google Meet, 100% individualizada.",
       },
       {
-        title: "02. Plano Alimentar 100% Personalizado",
+        title: "02. Cardápio Personalizado",
         tagline: "Feito para a sua rotina real",
         description:
-          "Calculado exatamente para a sua necessidade calórica e estilo de vida. Você recebe em PDF interativo no seu WhatsApp com opções práticas de substituição.",
+          "Calculado exatamente para a sua necessidade calórica e estilo de vida. Você recebe seu cardápio personalizado em PDF interativo no seu WhatsApp com opções práticas de substituição.",
       },
       {
-        title: "03. E-book Exclusivo de Receitas de 15 Minutos",
-        tagline: "Praticidade para quem não tem tempo",
+        title: "03. Guia de Receitas",
+        tagline: "Praticidade para quem não quer perder tempo",
         description:
-          "Mais de 30 receitas saborosas, com ingredientes baratos e fáceis de preparar: marmitas econômicas, lanches rápidos e opções para matar a vontade de doce sem estragar o foco.",
+          "Receitas saborosas com ingredientes baratos e fáceis de preparar: marmitas econômicas, lanches rápidos e opções simples para o seu dia a dia.",
       },
       {
-        title: "04. Suporte para Dúvidas no WhatsApp",
-        tagline: "Você nunca fica sem resposta",
-        description:
-          "Dúvidas sobre substituição de alimentos no supermercado ou no restaurante? Canal direto para você tirar suas dúvidas com agilidade.",
-      },
-      {
-        title: "05. Guia de Compras Econômicas",
+        title: "04. Guia de Compras Econômicas",
         tagline: "Economize até 30% na feira e no mercado",
         description:
           "Aprenda quais cortes de carnes, vegetais e fontes de proteína rendem mais, garantindo alta nutrição gastando menos do que você gasta hoje.",
@@ -112,17 +106,13 @@ export const COPY_CONTENT = {
       "Veja quanto custaria esse pacote em clínicas particulares tradicionais versus o Valor Social da Sabrina:",
     traditionalCompare: [
       { item: "Consulta Nutricional Particular", price: "R$ 350,00" },
-      { item: "Cálculo e Elaboração de Cardápio", price: "R$ 150,00" },
-      { item: "Guia de Receitas Rápidas", price: "R$ 67,00" },
-      { item: "Suporte e Tira-Dúvidas", price: "R$ 120,00" },
+      { item: "Cálculo de Cardápio Personalizado", price: "R$ 150,00" },
+      { item: "Guia de Receitas", price: "R$ 67,00" },
     ],
-    totalRegular: "R$ 687,00",
+    totalRegular: "R$ 567,00",
     socialPrice: "R$ 79,00",
     installmentText: "ou em até 2x de R$ 42,50 no cartão",
     urgencyText: "Atenção: Apenas 15 horários por semana são disponibilizados com valor social para manter a qualidade do atendimento.",
-    guaranteeTitle: "Garantia Incondicional de 7 Dias",
-    guaranteeText:
-      "Se você realizar a consulta e sentir que o plano não foi adequado para sua realidade, basta mandar uma única mensagem no WhatsApp que devolvemos 100% do valor pago. O risco é todo nosso.",
   },
 };
 
@@ -171,7 +161,7 @@ export const FAQS: FaqItem[] = [
   {
     question: "Por que o valor é tão acessível (R$ 79,00)? Tem pegadinha ou mensalidade?",
     answer:
-      "Não tem pegadinha, nem fidelidade ou cobranças ocultas. O valor de R$ 79,00 é pagamento único por consulta. Criei o projeto de Nutrição Social com o propósito de democratizar o acesso à saúde nutricional de qualidade no Brasil, operando de forma 100% digital e sem os custos fixos de um consultório presencial.",
+      "Não tem pegadinha, nem fidelidade ou cobranças ocultas. O valor de R$ 79,00 é pagamento único por consulta. Criei o projeto de Nutrição Social porque acredito na saúde de qualidade para todos, operando de forma 100% digital e sem os custos fixos de um consultório presencial.",
   },
   {
     question: "O que acontece logo após o pagamento do PIX?",
@@ -186,7 +176,7 @@ export const FAQS: FaqItem[] = [
   {
     question: "Quanto tempo dura a consulta e como recebo meu plano?",
     answer:
-      "A consulta por vídeo dura cerca de 50 minutos. Nela conversamos sobre todos os detalhes da sua vida e rotina. O plano alimentar completo, com as quantidades calculadas e tabela de substituições, é enviado no seu WhatsApp e e-mail em até 48 horas úteis após a consulta.",
+      "O tempo médio da consulta é de até 30 minutos. Nela conversamos sobre todos os detalhes da sua vida e rotina. O cardápio personalizado, com as quantidades calculadas e orientações, é enviado no seu WhatsApp e e-mail em até 48 horas úteis após a consulta.",
   },
   {
     question: "E se eu tiver algum imprevisto e precisar remarcar?",

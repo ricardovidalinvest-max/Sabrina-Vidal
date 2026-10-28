@@ -31,19 +31,19 @@ export const Hero: React.FC<HeroProps> = ({ onOpenBooking }) => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
               <div className="flex items-center gap-2.5 text-sm text-emerald-900">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Consulta 1 a 1 de 50 min via vídeo</span>
+                <span>Consulta individual com até 30 min</span>
               </div>
               <div className="flex items-center gap-2.5 text-sm text-emerald-900">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Cardápio individual sem restrições extremas</span>
+                <span>Cardápio personalizado</span>
               </div>
               <div className="flex items-center gap-2.5 text-sm text-emerald-900">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Guia de receitas rápidas de 15 minutos</span>
+                <span>Guia de receitas</span>
               </div>
               <div className="flex items-center gap-2.5 text-sm text-emerald-900">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Acompanhamento tira-dúvidas no WhatsApp</span>
+                <span>Atendimento 100% online em todo o Brasil</span>
               </div>
             </div>
 
@@ -125,10 +125,10 @@ export const Hero: React.FC<HeroProps> = ({ onOpenBooking }) => {
           </div>
           <div>
             <div className="text-2xl sm:text-3xl font-extrabold text-emerald-950 tabular-nums">
-              50 min
+              Até 30 min
             </div>
             <div className="text-xs sm:text-sm text-emerald-950/70 mt-1">
-              Duração da videochamada
+              Tempo médio da consulta
             </div>
           </div>
           <div>

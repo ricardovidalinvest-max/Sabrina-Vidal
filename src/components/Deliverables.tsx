@@ -1,8 +1,8 @@
 import React from 'react';
 import { COPY_CONTENT } from '../data/copywriting';
-import { Video, FileText, ChefHat, MessageSquare, ShoppingBag } from 'lucide-react';
+import { Video, FileText, ChefHat, ShoppingBag } from 'lucide-react';
 
-const icons = [Video, FileText, ChefHat, MessageSquare, ShoppingBag];
+const icons = [Video, FileText, ChefHat, ShoppingBag];
 
 export const Deliverables: React.FC = () => {
   return (
@@ -48,7 +48,7 @@ export const Deliverables: React.FC = () => {
 
             <div className="mt-5 pt-4 border-t border-neutral-800 flex items-center justify-between text-xs text-neutral-400">
               <span>Google Meet seguro</span>
-              <span>Duração: 50 minutos</span>
+              <span>O tempo médio da consulta é de até 30 minutos</span>
             </div>
           </div>
 

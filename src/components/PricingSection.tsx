@@ -1,6 +1,6 @@
 import React from 'react';
 import { COPY_CONTENT } from '../data/copywriting';
-import { Calendar, ShieldCheck, Check } from 'lucide-react';
+import { Calendar, Check } from 'lucide-react';
 
 interface PricingProps {
   onOpenBooking: () => void;
@@ -65,7 +65,7 @@ export const PricingSection: React.FC<PricingProps> = ({ onOpenBooking }) => {
               </div>
 
               <h3 className="text-xl sm:text-2xl font-bold text-white mb-2">
-                Consulta Completa + Dieta + Receitas + Suporte
+                Consulta Individual + Cardápio + Guia de Receitas
               </h3>
 
               <div className="my-6">
@@ -88,19 +88,15 @@ export const PricingSection: React.FC<PricingProps> = ({ onOpenBooking }) => {
               <div className="space-y-2.5 text-xs sm:text-sm text-emerald-100 mb-8">
                 <div className="flex items-center gap-2">
                   <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>Videochamada 1 a 1 de 50 minutos com a Sabrina</span>
+                  <span>Consulta individual com até 30 min com a Sabrina</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>Plano alimentar em PDF no seu WhatsApp em 48h</span>
+                  <span>Cardápio personalizado em PDF no seu WhatsApp em 48h</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>E-book de Receitas Rápidas e Lista de Compras</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>Canal de suporte para tirar dúvidas</span>
+                  <span>Guia de receitas e lista prática de compras</span>
                 </div>
               </div>
             </div>
@@ -119,21 +115,6 @@ export const PricingSection: React.FC<PricingProps> = ({ onOpenBooking }) => {
                 ⚡ {COPY_CONTENT.pricing.urgencyText}
               </div>
             </div>
-          </div>
-        </div>
-
-        {/* Unconditional Guarantee Box */}
-        <div className="max-w-3xl mx-auto mt-12 p-6 sm:p-8 rounded-2xl bg-emerald-50 border border-emerald-900/10 flex flex-col sm:flex-row items-center sm:items-start gap-5">
-          <div className="w-14 h-14 rounded-full bg-emerald-200/70 text-emerald-800 flex items-center justify-center shrink-0">
-            <ShieldCheck className="w-7 h-7" />
-          </div>
-          <div className="text-center sm:text-left">
-            <h4 className="text-base sm:text-lg font-bold text-emerald-950 mb-1">
-              {COPY_CONTENT.pricing.guaranteeTitle}
-            </h4>
-            <p className="text-xs sm:text-sm text-emerald-900/80 leading-relaxed">
-              {COPY_CONTENT.pricing.guaranteeText}
-            </p>
           </div>
         </div>
       </div>

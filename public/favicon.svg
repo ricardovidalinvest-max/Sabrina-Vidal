@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="emeraldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#064e3b" />
+      <stop offset="50%" stop-color="#047857" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34d399" />
+      <stop offset="100%" stop-color="#a7f3d0" />
+    </linearGradient>
+    <filter id="subtleShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#022c22" flood-opacity="0.35" />
+    </filter>
+  </defs>
+
+  <!-- Circular background badge with rich emerald gradient -->
+  <rect width="128" height="128" rx="36" fill="url(#emeraldGrad)" />
+
+  <!-- Subtle inner border for premium finishing -->
+  <rect x="2" y="2" width="124" height="124" rx="34" fill="none" stroke="#34d399" stroke-width="2" stroke-opacity="0.3" />
+
+  <!-- Stylized Nutrition Apple & Sprout Mark -->
+  <g filter="url(#subtleShadow)">
+    <!-- Leaf / Sprout extending upwards from the stem -->
+    <path
+      d="M64 26 C64 26, 78 20, 88 28 C92 32, 90 42, 80 44 C72 46, 65 38, 64 26 Z"
+      fill="url(#goldGrad)"
+    />
+    <path
+      d="M64 26 C72 32, 78 36, 86 35"
+      stroke="#047857"
+      stroke-width="1.8"
+      stroke-linecap="round"
+      fill="none"
+    />
+
+    <!-- Stem -->
+    <path
+      d="M64 30 C62 38, 59 44, 57 48"
+      stroke="#ecfdf5"
+      stroke-width="3.5"
+      stroke-linecap="round"
+      fill="none"
+    />
+
+    <!-- Apple Body / Heart Outline representing Vital Nutrition & Care -->
+    <path
+      d="M64 50
+         C56 42, 38 41, 32 55
+         C24 72, 34 94, 52 103
+         C58 106, 61 106, 64 104
+         C67 106, 70 106, 76 103
+         C94 94, 104 72, 96 55
+         C90 41, 72 42, 64 50 Z"
+      fill="#ffffff"
+    />
+
+    <!-- Stylized Clinical / Social Health Cross inside the nutrition emblem -->
+    <g fill="url(#emeraldGrad)">
+      <!-- Vertical bar of cross -->
+      <rect x="60" y="62" width="8" height="24" rx="3.5" />
+      <!-- Horizontal bar of cross -->
+      <rect x="52" y="70" width="24" height="8" rx="3.5" />
+    </g>
+  </g>
+</svg>

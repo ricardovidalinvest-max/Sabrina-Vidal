@@ -656,7 +656,7 @@ Qualquer dúvida, pode responder direto a esta mensagem ou pelo e-mail nutricion
                   <span>Escolha a Data e Horário da sua Consulta</span>
                 </h4>
                 <p className="text-xs text-neutral-500 mt-0.5">
-                  Consulta individual de Nutrição Social com a Drª Sabrina Vidal (50 min via Google Meet).
+                  Consulta individual de Nutrição Social com a Drª Sabrina Vidal (o tempo médio da consulta é de até 30 minutos via Google Meet).
                 </p>
               </div>
 
@@ -939,7 +939,7 @@ Qualquer dúvida, pode responder direto a esta mensagem ou pelo e-mail nutricion
                 Preencha seus dados para a consulta:
               </h4>
               <p className="text-xs sm:text-sm text-neutral-500">
-                A Drª Sabrina Vidal estuda suas respostas antes da chamada para que a consulta de 50 min seja 100% individualizada.
+                A Drª Sabrina Vidal estuda suas respostas antes da chamada para que a consulta individual com até 30 min seja 100% individualizada.
               </p>
             </div>
 
@@ -1462,7 +1462,7 @@ Qualquer dúvida, pode responder direto a esta mensagem ou pelo e-mail nutricion
                     {patientName}
                   </div>
                   <div className="text-[11px] text-neutral-500">
-                    {formData.age ? `${formData.age} anos · ` : ''}Duração de 50 minutos
+                    {formData.age ? `${formData.age} anos · ` : ''}O tempo médio da consulta é de até 30 minutos
                   </div>
                 </div>
               </div>

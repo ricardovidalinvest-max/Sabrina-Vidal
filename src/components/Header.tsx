@@ -12,9 +12,14 @@ export const Header: React.FC<HeaderProps> = ({ onOpenBooking }) => {
         {/* Zone 1: Brand Wordmark (Single clean element) */}
         <a
           href="#"
-          className="text-xl sm:text-2xl font-bold tracking-tight text-emerald-950 whitespace-nowrap shrink-0 hover:text-emerald-800 transition-colors font-serif-display"
+          className="flex items-center gap-2.5 text-xl sm:text-2xl font-bold tracking-tight text-emerald-950 whitespace-nowrap shrink-0 hover:text-emerald-800 transition-colors font-serif-display"
         >
-          Drª Sabrina Vidal
+          <img
+            src="/favicon.svg"
+            alt="Logo Drª Sabrina Vidal"
+            className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg shadow-xs"
+          />
+          <span>Drª Sabrina Vidal</span>
         </a>
 
         {/* Zone 2: Clean Nav Links */}

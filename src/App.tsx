@@ -85,7 +85,7 @@ export default function App() {
               </button>
             </div>
             <div className="text-xs text-emerald-300/80 mt-4">
-              Sem mensalidades ou surpresas · Garantia de 7 dias ou seu dinheiro de volta
+              Sem mensalidades ou surpresas · Atendimento individual humanizado
             </div>
           </div>
         </section>

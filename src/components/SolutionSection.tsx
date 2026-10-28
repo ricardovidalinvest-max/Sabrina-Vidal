@@ -15,7 +15,7 @@ export const SolutionSection: React.FC<SolutionProps> = ({ onOpenBooking }) => {
           <div className="lg:col-span-5 order-2 lg:order-1">
             <div className="relative rounded-2xl overflow-hidden border border-emerald-800 shadow-xl">
               <img
-                src="/src/assets/images/healthy_practical_meal_1792611411579.jpg"
+                src="/assets/images/healthy_practical_meal_1792611411579.jpg"
                 alt="Prato colorido e nutritivo do dia a dia com arroz, feijão, frango grelhado e salada fresca"
                 referrerPolicy="no-referrer"
                 className="w-full h-auto object-cover aspect-4/3"

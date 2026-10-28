@@ -38,7 +38,7 @@ export const Deliverables: React.FC = () => {
 
             <div className="rounded-xl overflow-hidden border border-neutral-700 bg-black/40">
               <img
-                src="/src/assets/images/online_nutrition_session_1792611412567.jpg"
+                src="/assets/images/online_nutrition_session_1792611412567.jpg"
                 alt="Consulta nutricional online acolhedora em tela de computador"
                 referrerPolicy="no-referrer"
                 className="w-full h-auto object-cover aspect-16/9"

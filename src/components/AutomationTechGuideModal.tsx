@@ -831,8 +831,8 @@ export const AutomationTechGuideModal: React.FC<TechGuideProps> = ({ isOpen, onC
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
             }`}
           >
-            <Globe className="w-4 h-4 text-blue-400" />
-            Domínio & Guia de Deploy
+            <img src="/favicon.svg" alt="Favicon" className="w-4 h-4 rounded-xs shrink-0 shadow-xs" />
+            <span>Domínio & Guia de Deploy</span>
           </button>
 
           <button
@@ -1210,21 +1210,28 @@ export const AutomationTechGuideModal: React.FC<TechGuideProps> = ({ isOpen, onC
 
                 {/* Banner de Ajuste Rápido de Domínio */}
                 <div className="mb-3.5 p-3 bg-slate-950/80 border border-blue-500/30 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                  <div className="flex items-center gap-2">
-                    <Globe className="w-4 h-4 text-blue-400 shrink-0" />
+                  <div className="flex items-center gap-2.5">
+                    <img src="/favicon.svg" alt="Favicon" className="w-5 h-5 rounded-md shrink-0 shadow-xs" />
                     <div>
-                      <span className="text-xs font-bold text-slate-200">Domínio Próprio da Aplicação (APP_URL):</span>
+                      <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                        <span>Domínio Próprio da Aplicação (APP_URL):</span>
+                      </span>
                       <p className="text-[10px] text-slate-400">Insira seu domínio (ex: <span className="text-blue-300 font-mono">https://drasabrina.com.br</span>) para atualizar as URLs dos webhooks automaticamente.</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 w-full sm:w-auto">
-                    <input
-                      type="text"
-                      placeholder="https://seu-dominio.com.br"
-                      value={appUrlInput}
-                      onChange={(e) => setAppUrlInput(e.target.value)}
-                      className="px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs font-mono text-blue-300 w-full sm:w-64 focus:border-blue-500 focus:outline-none"
-                    />
+                    <div className="relative flex items-center w-full sm:w-64">
+                      <div className="absolute left-2.5 flex items-center pointer-events-none">
+                        <img src="/favicon.svg" alt="Favicon" className="w-3.5 h-3.5 rounded-xs" />
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="https://seu-dominio.com.br"
+                        value={appUrlInput}
+                        onChange={(e) => setAppUrlInput(e.target.value)}
+                        className="pl-8 pr-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs font-mono text-blue-300 w-full focus:border-blue-500 focus:outline-none"
+                      />
+                    </div>
                     <button
                       onClick={handleSaveConfig}
                       disabled={isSavingConfig}
@@ -1989,26 +1996,30 @@ export const AutomationTechGuideModal: React.FC<TechGuideProps> = ({ isOpen, onC
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-700/60 pb-3">
                   <div>
                     <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                      <Globe className="w-4 h-4 text-blue-400" />
-                      1. Definição do Domínio Próprio da Aplicação
+                      <img src="/favicon.svg" alt="Favicon" className="w-4 h-4 rounded-xs shrink-0 shadow-xs" />
+                      <span>1. Definição do Domínio Próprio da Aplicação</span>
                     </h4>
                     <p className="text-xs text-slate-400">
                       Ao preencher seu domínio oficial, todas as URLs de webhook abaixo são recalculadas instantaneamente para você colar no Cal.com e no Asaas.
                     </p>
                   </div>
-                  <span className="text-xs font-mono text-blue-300 bg-slate-950 px-2.5 py-1 rounded border border-slate-800">
-                    Host Atual: {resolvedOrigin}
+                  <span className="text-xs font-mono text-blue-300 bg-slate-950 px-2.5 py-1 rounded border border-slate-800 flex items-center gap-1.5">
+                    <img src="/favicon.svg" alt="Favicon" className="w-3.5 h-3.5 rounded-xs shrink-0" />
+                    <span>Host Atual: {resolvedOrigin}</span>
                   </span>
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-center gap-2">
                   <div className="relative w-full">
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center pointer-events-none">
+                      <img src="/favicon.svg" alt="Favicon" className="w-3.5 h-3.5 rounded-xs" />
+                    </div>
                     <input
                       type="text"
                       placeholder="Ex: https://drasabrinavidal.com.br"
                       value={appUrlInput}
                       onChange={(e) => setAppUrlInput(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs font-mono text-blue-300 focus:border-blue-500 focus:outline-none"
+                      className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs font-mono text-blue-300 focus:border-blue-500 focus:outline-none"
                     />
                   </div>
                   <button

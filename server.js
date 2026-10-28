@@ -548,33 +548,18 @@ var CalcomService = class {
    * Cria uma pré-reserva de horário no Cal.com por 15 minutos aguardando pagamento
    * Bloqueia a agenda temporariamente. Se o pagamento não ocorrer em 15 min, será cancelado.
    */
+  /**
+   * Cria uma reserva de horário no Cal.com bloqueando a agenda da nutricionista.
+   * Se o pagamento PIX não for confirmado em 15 minutos, a reserva será cancelada e liberada no Cal.com.
+   */
   async createReservation(params) {
     const expiresAt = new Date(Date.now() + 15 * 60 * 1e3).toISOString();
     const cleanPhone = (params.attendee.phoneNumber || "").replace(/\D/g, "");
     const formattedPhone = cleanPhone.startsWith("55") ? `+${cleanPhone}` : `+55${cleanPhone}`;
-    console.log(`[CalcomService:v2] Criando pr\xE9-reserva de 15 minutos no Cal.com para ${params.attendee.name} (${params.startTime})...`);
-    if (!this.apiKey) {
-      const syntheticUid = `cal_hold_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-      console.log(`[CalcomService:v2] CALCOM_API_KEY n\xE3o configurada. Criando reserva tempor\xE1ria local ID: ${syntheticUid}`);
-      return {
-        success: true,
-        bookingId: syntheticUid,
-        uid: syntheticUid,
-        startTime: params.startTime,
-        status: "PENDING",
-        expiresAt,
-        videoCallUrl: `https://meet.google.com/sab-${Math.random().toString(36).substring(2, 6)}-${Math.random().toString(36).substring(2, 6)}`,
-        isSimulated: true
-      };
-    }
+    const dateObj = new Date(params.startTime);
+    const startUtc = !isNaN(dateObj.getTime()) ? dateObj.toISOString() : params.startTime;
+    console.log(`[CalcomService:v2] Criando reserva oficial no Cal.com para ${params.attendee.name} (${startUtc})...`);
     try {
-      let eventTypeId = params.eventTypeId;
-      if (!eventTypeId) {
-        const events = await this.getEventTypes();
-        if (events.success && events.data && events.data.length > 0) {
-          eventTypeId = events.data[0].id;
-        }
-      }
       const liveConf = getLiveConfig();
       const eventUrl = liveConf.calcomEventUrl || process.env.CALCOM_EVENT_URL || "https://cal.com/sabrina-amorim-tkood0/agendamentos-de-consultas";
       let parsedUsername = "sabrina-amorim-tkood0";
@@ -589,7 +574,11 @@ var CalcomService = class {
       } catch {
       }
       const bodyPayload = {
-        start: params.startTime,
+        start: startUtc,
+        eventTypeId: 7600191,
+        // ID oficial do evento 'agendamentos-de-consultas' da Dra. Sabrina Vidal
+        eventTypeSlug: parsedSlug,
+        username: parsedUsername,
         attendee: {
           name: params.attendee.name,
           email: params.attendee.email,
@@ -603,12 +592,6 @@ var CalcomService = class {
           ...params.metadata
         }
       };
-      if (eventTypeId && !isNaN(Number(eventTypeId))) {
-        bodyPayload.eventTypeId = Number(eventTypeId);
-      } else {
-        bodyPayload.eventTypeSlug = parsedSlug;
-        bodyPayload.username = parsedUsername;
-      }
       const response = await fetch(`${this.baseUrl}/bookings`, {
         method: "POST",
         headers: this.getHeaders(),
@@ -617,6 +600,38 @@ var CalcomService = class {
       if (!response.ok) {
         const errText = await response.text();
         console.warn(`[CalcomService:v2:WARN] Falha ao registrar na API do Cal.com (${response.status}): ${errText}`);
+        const retryRes = await fetch(`${this.baseUrl}/bookings`, {
+          method: "POST",
+          headers: this.getHeaders(),
+          body: JSON.stringify({
+            start: startUtc,
+            eventTypeSlug: parsedSlug,
+            username: parsedUsername,
+            attendee: bodyPayload.attendee,
+            metadata: bodyPayload.metadata
+          })
+        });
+        if (retryRes.ok) {
+          const retryData = await retryRes.json();
+          const booking2 = retryData.data || retryData;
+          const bookingId2 = String(booking2.id || booking2.uid);
+          const uid2 = String(booking2.uid || booking2.id);
+          const videoCallUrl2 = booking2.meetingUrl || booking2.videoCallUrl || booking2.location || `https://meet.google.com/sab-vidal-79`;
+          console.log(`[CalcomService:v2] Reserva criada no Cal.com com sucesso via slug! ID: ${bookingId2} (UID: ${uid2})`);
+          return {
+            success: true,
+            bookingId: bookingId2,
+            uid: uid2,
+            startTime: booking2.start || params.startTime,
+            endTime: booking2.end,
+            status: "PENDING",
+            expiresAt,
+            videoCallUrl: videoCallUrl2,
+            rawResponse: booking2
+          };
+        }
+        const retryErr = await retryRes.text();
+        console.error(`[CalcomService:v2:ERROR] Falha definitiva ao criar reserva no Cal.com: ${retryErr}`);
         const localUid = `cal_hold_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
         return {
           success: true,
@@ -625,23 +640,23 @@ var CalcomService = class {
           startTime: params.startTime,
           status: "PENDING",
           expiresAt,
-          videoCallUrl: `https://meet.google.com/sab-${Math.random().toString(36).substring(2, 6)}-${Math.random().toString(36).substring(2, 6)}`,
+          videoCallUrl: `https://meet.google.com/sab-vidal-79`,
           isSimulated: true,
-          rawResponse: { error: errText, status: response.status }
+          rawResponse: { error: retryErr, status: retryRes.status }
         };
       }
       const data = await response.json();
       const booking = data.data || data;
       const bookingId = String(booking.id || booking.uid);
       const uid = String(booking.uid || booking.id);
-      const videoCallUrl = booking.videoCallUrl || booking.meetingUrl || `https://meet.google.com/sab-vidal-79`;
-      console.log(`[CalcomService:v2] Pr\xE9-reserva criada com sucesso no Cal.com! ID: ${bookingId} (UID: ${uid})`);
+      const videoCallUrl = booking.meetingUrl || booking.videoCallUrl || booking.location || `https://meet.google.com/sab-vidal-79`;
+      console.log(`[CalcomService:v2] SUCESSO! Reserva criada no Cal.com e agenda bloqueada: ID ${bookingId} (UID: ${uid})`);
       return {
         success: true,
         bookingId,
         uid,
-        startTime: booking.startTime || params.startTime,
-        endTime: booking.endTime,
+        startTime: booking.start || params.startTime,
+        endTime: booking.end,
         status: "PENDING",
         expiresAt,
         videoCallUrl,
@@ -657,7 +672,7 @@ var CalcomService = class {
         startTime: params.startTime,
         status: "PENDING",
         expiresAt,
-        videoCallUrl: `https://meet.google.com/sab-${Math.random().toString(36).substring(2, 6)}-${Math.random().toString(36).substring(2, 6)}`,
+        videoCallUrl: `https://meet.google.com/sab-vidal-79`,
         isSimulated: true
       };
     }
@@ -720,10 +735,6 @@ var CalcomService = class {
       if (bIdStr.startsWith("booking_") || bIdStr.startsWith("cal_hold_") || bIdStr.startsWith("test_") || bIdStr.startsWith("manual_")) {
         console.log(`[CalcomService:v2] ID ${bookingId} \xE9 um agendamento local/sint\xE9tico. Liberando localmente.`);
         return { success: true, data: { status: "CANCELLED", local: true, id: bookingId } };
-      }
-      if (!this.apiKey) {
-        console.warn(`[CalcomService:v2] CALCOM_API_KEY n\xE3o configurada. Simulando cancelamento.`);
-        return { success: true, data: { status: "CANCELLED", simulated: true, id: bookingId } };
       }
       const response = await fetch(`${this.baseUrl}/bookings/${bookingId}/cancel`, {
         method: "POST",
